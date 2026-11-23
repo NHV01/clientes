@@ -366,7 +366,6 @@ function render(){
 /* ---------- Calendario de picos (fechas de fútbol) ---------- */
 // Fechas iniciales buscadas el 23/11/2026. Las marcadas "verificar" no están confirmadas oficialmente.
 const EVENTOS_INICIALES = [
-  ['2026-12-02','Oriente Petrolero vs Bolívar (fecha 28)','Liga boliviana','media','Grande vs grande; confirmar hora',true],
   ['2026-12-13','Cierre de la División Profesional 2026','Liga boliviana','alta','Última fecha prevista por la FBF; se define el campeón',true],
   ['2027-02-03','Libertadores 2027 · Fase 1 (ida)','Copa Libertadores','alta','Los equipos bolivianos suelen entrar en las fases previas: confirmá quiénes juegan',true],
   ['2027-02-10','Libertadores 2027 · Fase 1 (vuelta)','Copa Libertadores','media','',true],
@@ -393,14 +392,16 @@ function asegurarEventos(){
   if(!Array.isArray(db.eventos)) db.eventos = [];
   if(!db.settings.eventosCargados){
     EVENTOS_INICIALES.forEach(([fecha,titulo,comp,imp,nota,verificar])=>db.eventos.push({id:uid(), fecha, hora:'', titulo, comp, imp, nota, verificar}));
-    db.settings.eventosCargados = true; db.settings.eventosV2 = true; guardar();
+    db.settings.eventosCargados = true; db.settings.eventosV2 = true; db.settings.eventosV3 = true; guardar();
   }
   if(!db.settings.eventosV2){   // corrección de las fechas bolivianas cargadas el 23/11/2026
     const cierre = db.eventos.find(e=>e.titulo.startsWith('Cierre de la División Profesional 2026') && e.fecha==='2026-12-23');
     if(cierre) Object.assign(cierre, {fecha:'2026-12-13', titulo:'Cierre de la División Profesional 2026', imp:'alta', nota:'Última fecha prevista por la FBF; se define el campeón'});
-    if(!db.eventos.some(e=>e.titulo.startsWith('Oriente Petrolero vs Bolívar')))
-      db.eventos.push({id:uid(), fecha:'2026-12-02', hora:'', titulo:'Oriente Petrolero vs Bolívar (fecha 28)', comp:'Liga boliviana', imp:'media', nota:'Grande vs grande; confirmar hora', verificar:true});
     db.settings.eventosV2 = true; guardar();
+  }
+  if(!db.settings.eventosV3){   // se quita "Oriente vs Bolívar 02/12": no se pudo confirmar (solo si sigue igual a como lo cargó la app)
+    db.eventos = db.eventos.filter(e=>!(e.titulo==='Oriente Petrolero vs Bolívar (fecha 28)' && e.fecha==='2026-12-02' && e.nota==='Grande vs grande; confirmar hora'));
+    db.settings.eventosV3 = true; guardar();
   }
 }
 
