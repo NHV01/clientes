@@ -408,12 +408,12 @@ function asegurarEventos(){
 /* --- Partidos automáticos (football-data.org vía el servidor) y su importancia --- */
 // Equipos: [expresión para reconocerlo, nombre corto, puntos]
 const EQUIPOS = [
-  [/real madrid/i,'Real Madrid',25], [/barcelona|barça/i,'Barcelona',25], [/manchester city|man city/i,'Man City',25],
+  [/real madrid/i,'Real Madrid',25], [/^fc barcelona$|^barça$|^barcelona$/i,'Barcelona',25], [/manchester city|man city/i,'Man City',25],
   [/liverpool/i,'Liverpool',25], [/arsenal/i,'Arsenal',25], [/bayern/i,'Bayern',25], [/paris saint|^psg$|paris sg/i,'PSG',25],
   [/atl[eé]tico( de)? madrid|^atleti/i,'Atlético',18], [/manchester united|man united|man utd/i,'Man United',18], [/chelsea/i,'Chelsea',18],
   [/internazionale|^inter( milan| milano)?$|fc inter/i,'Inter',18], [/juventus/i,'Juventus',18], [/^ac milan|^milan$/i,'Milan',18],
   [/tottenham|spurs/i,'Tottenham',10], [/newcastle/i,'Newcastle',10], [/dortmund|^bvb/i,'Dortmund',10], [/napoli/i,'Napoli',10],
-  [/leverkusen/i,'Leverkusen',10], [/benfica/i,'Benfica',10], [/^fc porto|^porto$/i,'Porto',10], [/sporting/i,'Sporting',10],
+  [/leverkusen/i,'Leverkusen',10], [/benfica/i,'Benfica',10], [/^fc porto|^porto$/i,'Porto',10], [/sporting clube de portugal|^sporting cp$|^sporting$/i,'Sporting',10],
   [/^as roma|^roma$/i,'Roma',10], [/aston villa/i,'Aston Villa',10], [/marseille/i,'Marsella',10],
   [/everton/i,'Everton',0], [/lazio/i,'Lazio',0],
 ];
@@ -432,14 +432,15 @@ function calificar(p){
   const a = equipo(p.l), b = equipo(p.v);
   const etapa = ETAPAS[p.etapa];
   const derbi = a && b && DERBIS.find(([x,y])=>(x===a[1]&&y===b[1])||(x===b[1]&&y===a[1]));
-  let pts = (BASE_COMP[p.c]||5) + (a?a[2]:0) + (b?b[2]:0) + (derbi?derbi[3]:0) + (etapa?etapa[1]:0);
+  const grandes = a && b && a[2]>=18 && b[2]>=18;   // duelo entre dos grandes: suma extra
+  let pts = (BASE_COMP[p.c]||5) + (a?a[2]:0) + (b?b[2]:0) + (derbi?derbi[3]:0) + (etapa?etapa[1]:0) + (grandes && !derbi ? 10 : 0);
   pts = Math.min(100, pts);
   const motivo = derbi ? `🔥 ${derbi[2]}` : etapa ? `${etapa[0]} de ${NOMBRE_COMP[p.c]||p.comp}` : (a && b && a[2]>=18 && b[2]>=18) ? 'Duelo de grandes' : (a||b) && (a||b)[2]>=25 ? `Juega ${(a||b)[1]}` : '';
   return {pts, motivo};
 }
 const estrellas = pts => pts>=80?5 : pts>=60?4 : pts>=45?3 : pts>=30?2 : 1;
 const nivel = pts => pts>=60?'alta' : pts>=35?'media' : 'baja';
-const PTS_MANUAL = {alta:75, media:45, baja:20};
+const PTS_MANUAL = {alta:65, media:40, baja:20};
 const CACHE_PARTIDOS = 'clientes_partidos_v1';
 let partidos = null, partidosEstado = '', cargandoPartidos = false, ultimoIntento = 0;
 try{ partidos = JSON.parse(localStorage.getItem(CACHE_PARTIDOS)); }catch(e){}
