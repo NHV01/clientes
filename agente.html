@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Página privada: que no aparezca en Google ni en otros buscadores -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="googlebot" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#2563eb">
+<title>Cargas 24 hs</title>
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#fff; --text:#1c1e21; --muted:#6b7280; --line:#e3e5e8;
+  --accent:#2563eb; --wa:#1fa855; --wa-dark:#178a45; --chip:#eef2ff;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --bg:#14161a; --panel:#1d2026; --text:#e8eaed; --muted:#9aa0a6; --line:#2e323a; --accent:#3b82f6; --chip:#252a36; }
+}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+.wrap{max-width:560px;margin:0 auto;padding:24px 16px 110px}
+.hero{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff;border-radius:18px;padding:28px 22px;text-align:center}
+.hero img{width:72px;height:72px;border-radius:18px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.hero h1{margin:12px 0 4px;font-size:26px}
+.hero p{margin:0;opacity:.92}
+.pill{display:inline-flex;align-items:center;gap:6px;margin-top:14px;background:rgba(255,255,255,.18);padding:6px 12px;border-radius:999px;font-weight:600;font-size:14px}
+.pill i{width:9px;height:9px;border-radius:50%;background:#4ade80;display:inline-block;box-shadow:0 0 0 3px rgba(74,222,128,.3)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px 18px;margin-top:14px}
+.card h2{margin:0 0 12px;font-size:18px;display:flex;gap:8px;align-items:center}
+.pasos{list-style:none;margin:0;padding:0;counter-reset:p}
+.pasos li{counter-increment:p;display:flex;gap:12px;align-items:flex-start;padding:8px 0}
+.pasos li::before{content:counter(p);flex:0 0 28px;height:28px;border-radius:50%;background:var(--chip);color:var(--accent);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px}
+.metodo{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:12px;background:var(--chip)}
+.metodo .ico{font-size:26px}
+.metodo b{display:block}
+.metodo span{color:var(--muted);font-size:14px}
+.horario{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.horario .grande{font-size:22px;font-weight:700}
+.muted{color:var(--muted)}
+.btn-wa{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:15px;border:none;border-radius:14px;background:var(--wa);color:#fff;font:inherit;font-size:17px;font-weight:700;text-decoration:none;cursor:pointer}
+.btn-wa:hover{background:var(--wa-dark)}
+.btn-wa svg{width:24px;height:24px;fill:#fff}
+.btn-wa.off{background:#9ca3af;cursor:not-allowed}
+.flotante{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(transparent,var(--bg) 35%)}
+.flotante .btn-wa{max-width:528px;margin:0 auto;box-shadow:0 6px 20px rgba(31,168,85,.35)}
+footer{text-align:center;color:var(--muted);font-size:13px;margin-top:22px}
+.aviso{background:#fff4e5;color:#b45309;border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="avisoConfig"></div>
+
+  <section class="hero">
+    <img src="icons/icon-192.png" alt="">
+    <h1 id="nombre">Tu agente de cargas</h1>
+    <p>Cargas rápidas y atención personalizada por WhatsApp.</p>
+    <div class="pill"><i></i> Atendiendo las 24 horas</div>
+  </section>
+
+  <section class="card">
+    <h2>📝 Cómo cargar</h2>
+    <ol class="pasos">
+      <li><div>Escribime por <b>WhatsApp</b> con tu <b>usuario</b> y el <b>monto</b> que querés cargar.</div></li>
+      <li><div>Te paso el <b>QR</b> o los datos para la <b>transferencia</b>.</div></li>
+      <li><div>Hacés el pago y me mandás el <b>comprobante</b>.</div></li>
+      <li><div>Te acredito la carga en tu cuenta y te aviso. ✅</div></li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>💳 Métodos de carga</h2>
+    <div class="metodo">
+      <div class="ico">🏦</div>
+      <div><b>QR / Transferencia bancaria</b><span>Pagás con el QR que te envío o por transferencia a mi cuenta.</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>🕒 Horario de atención</h2>
+    <div class="horario">
+      <div><div class="grande">24 horas</div><div class="muted">Todos los días, incluidos feriados</div></div>
+      <div style="font-size:40px">🌙☀️</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <a id="btnWa" class="btn-wa" href="#" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91C21.95 6.45 17.5 2 12.04 2zm5.8 14.03c-.25.69-1.44 1.32-1.98 1.37-.51.05-.99.24-3.33-.69-2.82-1.11-4.6-3.99-4.74-4.18-.14-.18-1.13-1.5-1.13-2.87 0-1.37.71-2.04.97-2.32.25-.28.55-.35.74-.35l.53.01c.17.01.4-.06.62.48.23.55.78 1.91.85 2.05.07.14.11.3.02.48-.09.18-.14.3-.28.46-.14.16-.29.36-.42.48-.14.14-.28.29-.12.57.16.28.72 1.19 1.55 1.93 1.07.95 1.97 1.25 2.25 1.39.28.14.44.12.6-.07.16-.18.69-.81.88-1.09.18-.28.37-.23.62-.14.25.09 1.6.76 1.88.9.28.14.46.21.53.32.07.12.07.67-.18 1.36z"/></svg>
+      Escribime por WhatsApp
+    </a>
+    <p class="muted" style="text-align:center;margin:10px 0 0;font-size:14px">Te respondo en pocos minutos.</p>
+  </section>
+
+  <footer>🔞 Solo mayores de 18 años. Jugá con responsabilidad.</footer>
+</div>
+
+<div class="flotante"><a id="btnWa2" class="btn-wa" href="#" target="_blank" rel="noopener">💬 Cargar ahora por WhatsApp</a></div>
+
+<script>
+/* ======= CONFIGURACIÓN: completá estos datos ======= */
+const CONFIG = {
+  nombre:   'Nicolas Hurtado',   // vacío = "Tu agente de cargas"
+  whatsapp: '59178451847',       // con código de país, sin + ni espacios
+  mensaje:  'Hola! Quiero hacer una carga. Mi usuario es: '
+};
+/* =================================================== */
+
+if (CONFIG.nombre) { document.getElementById('nombre').textContent = CONFIG.nombre; document.title = CONFIG.nombre + ' · Cargas 24 hs'; }
+const num = CONFIG.whatsapp.replace(/\D/g, '');
+['btnWa', 'btnWa2'].forEach(id => {
+  const a = document.getElementById(id);
+  if (num) a.href = 'https://wa.me/' + num + '?text=' + encodeURIComponent(CONFIG.mensaje);
+  else { a.classList.add('off'); a.removeAttribute('href'); a.title = 'Falta configurar el número de WhatsApp'; }
+});
+if (!num) document.getElementById('avisoConfig').innerHTML =
+  '<div class="aviso">⚠️ Falta configurar el número de WhatsApp (y el nombre) en la sección CONFIGURACIÓN del archivo.</div>';
+</script>
+</body>
+</html>
