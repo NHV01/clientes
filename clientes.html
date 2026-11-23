@@ -46,6 +46,10 @@ button.small{padding:4px 9px;font-size:13px}
 .badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--danger);color:#fff;font-size:12px;text-align:center;margin-left:4px}
 .alerta{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .alerta b{color:inherit}
+.alerta.riesgo{background:var(--danger);color:#fff;font-weight:500}
+.alerta.riesgo button{background:#fff;color:#b91c1c;border-color:#fff}
+.chip-riesgo{display:inline-block;margin-top:3px;padding:1px 7px;border-radius:999px;background:var(--danger);color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
+.chip-riesgo.atendido{background:var(--chip);color:var(--muted)}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 table{width:100%;border-collapse:collapse}
 th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
@@ -112,10 +116,12 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
 
 <main>
   <div id="alertaBackup"></div>
+  <div id="alertaRiesgo"></div>
   <div id="alerta"></div>
   <div id="alertaBonos"></div>
   <div class="tabs">
     <button id="tabTodos" class="on" onclick="setTab('todos')">Todos <span id="cTodos" class="muted"></span></button>
+    <button id="tabRiesgo" onclick="setTab('riesgo')">🔥 En riesgo <span id="cRiesgo"></span></button>
     <button id="tabPend" onclick="setTab('pend')">Para contactar <span id="cPend"></span></button>
     <button id="tabRank" onclick="setTab('ranking')">🏆 Ranking de referidores</button>
   </div>
@@ -133,6 +139,11 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
     <h2>⚙️ Ajustes</h2>
     <label>Avisarme de clientes sin contacto hace más de (días)</label>
     <input type="number" id="cfgDias" min="1" style="max-width:120px">
+    <label style="margin-top:12px">Cliente en riesgo: lleva sin cargar más de</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <input type="number" id="cfgRiesgo" min="1.2" step="0.1" style="max-width:90px"> veces su ritmo promedio de carga
+    </div>
+    <p class="muted" style="margin:4px 0 0;font-size:13px">Ej.: con 2, alguien que carga cada 3 días entra en riesgo a los 6 días sin cargar. Siempre se dejan al menos 3 días de margen sobre su promedio.</p>
     <label style="margin-top:12px">Bono por referidos</label>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       Bs <input type="number" id="cfgBonoMonto" min="0" step="any" style="max-width:100px">
@@ -160,7 +171,7 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
 <script>
 const KEY = 'metabet_clientes_v1';
 let db = cargar();
-const DEF_SETTINGS = {dias:7, bonoMonto:30, bonoCada:3};
+const DEF_SETTINGS = {dias:7, bonoMonto:30, bonoCada:3, riesgoFactor:2};
 db.settings = Object.assign({}, DEF_SETTINGS, db.settings);
 let tab = 'todos', orden = {campo:'dias', dir:-1}, abierto = null;
 
@@ -214,6 +225,32 @@ const referidosDe = id => id ? db.clientes.filter(x => x.referidoPor === id) : [
 const nombreDe = id => (db.clientes.find(x=>x.id===id)||{}).nombre || '';
 const pendientes = () => db.clientes.filter(c => !c.pausado && resumen(c).dias > db.settings.dias);
 
+/* ---------- clientes en riesgo: bajaron su frecuencia de carga ---------- */
+function sumarDias(iso, n){ const [y,m,d]=iso.split('-').map(Number); const f=new Date(y,m-1,d+n); return `${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}-${String(f.getDate()).padStart(2,'0')}`; }
+// Necesita al menos 3 días distintos con carga para conocer su ritmo.
+// Está en riesgo si lleva sin cargar más de [factor] veces su promedio (y al menos 3 días más que su promedio).
+function ritmo(c){
+  const fechas = [...new Set(c.cargas.filter(m=>m.tipo!=='retiro').map(m=>m.fecha))].sort();
+  if(fechas.length < 3) return null;
+  const ultima = fechas[fechas.length-1];
+  const prom = (diasDesde(fechas[0]) - diasDesde(ultima)) / (fechas.length-1);
+  if(!(prom > 0)) return null;
+  const factor = Number(db.settings.riesgoFactor) || 2;
+  const umbral = Math.max(Math.round(prom*factor), Math.ceil(prom)+3);
+  const sin = diasDesde(ultima);
+  const desde = sumarDias(ultima, umbral);            // día en que pasó a estar en riesgo
+  const enRiesgo = sin >= umbral;
+  const atendido = enRiesgo && (ultimoContacto(c)||'') >= desde;  // ya lo contactaste desde que entró en riesgo
+  return {prom, sin, umbral, ultima, desde, enRiesgo, atendido, veces: sin/prom};
+}
+const fmtProm = p => p < 1.5 ? 'todos los días' : `cada ${Math.round(p*10)/10} días`;
+// Lista priorizada: primero los no contactados, y entre ellos los que más se alejaron de su ritmo.
+function enRiesgo(incluirAtendidos=false){
+  return db.clientes.filter(c=>!c.pausado).map(c=>({c, rt:ritmo(c)}))
+    .filter(x=>x.rt && x.rt.enRiesgo && (incluirAtendidos || !x.rt.atendido))
+    .sort((a,b)=> (a.rt.atendido-b.rt.atendido) || (b.rt.veces-a.rt.veces));
+}
+
 /* ---------- lista ---------- */
 function render(){
   const q = document.getElementById('buscar').value.trim().toLowerCase();
@@ -223,6 +260,14 @@ function render(){
   document.getElementById('tabTodos').classList.toggle('on', tab==='todos');
   document.getElementById('tabPend').classList.toggle('on', tab==='pend');
   document.getElementById('tabRank').classList.toggle('on', tab==='ranking');
+  document.getElementById('tabRiesgo').classList.toggle('on', tab==='riesgo');
+
+  // alerta especial: clientes en riesgo (va primero, es la prioridad)
+  const riesgo = enRiesgo();
+  document.getElementById('cRiesgo').innerHTML = riesgo.length ? `<span class="badge">${riesgo.length}</span>` : '<span class="muted">0</span>';
+  document.getElementById('alertaRiesgo').innerHTML = riesgo.length
+    ? `<div class="alerta riesgo">🔥 <span class="grow"><b>${riesgo.length}</b> cliente${riesgo.length>1?'s':''} en riesgo (bajaron su ritmo de carga): ${riesgo.slice(0,4).map(x=>`${esc(x.c.nombre)} (${x.rt.sin} días, cargaba ${fmtProm(x.rt.prom)})`).join(', ')}${riesgo.length>4?'…':''}</span>
+       ${tab!=='riesgo'?'<button class="small" onclick="setTab(\'riesgo\')">Ver y priorizar</button>':''}</div>` : '';
 
   // alerta
   const al = document.getElementById('alerta');
@@ -246,14 +291,20 @@ function render(){
     ? `<div class="alerta">💾 <span class="grow">${ub?`Tu última copia de seguridad es del ${fmtFecha(ub)}.`:'Todavía no hiciste ninguna copia de seguridad.'}</span><button class="small" onclick="exportarJSON()">Exportar ahora</button></div>` : '';
 
   if(tab==='ranking'){ renderRanking(q); return; }
-  let lista = (tab==='pend' ? pend : db.clientes).map(c=>({c, r:resumen(c)}));
+  const riesgoIds = new Map(enRiesgo(true).map((x,i)=>[x.c.id, i]));
+  let lista = (tab==='pend' ? pend : tab==='riesgo' ? enRiesgo(true).map(x=>x.c) : db.clientes).map(c=>({c, r:resumen(c), rt:ritmo(c)}));
   if(q) lista = lista.filter(({c}) => [c.nombre,c.usuario,c.telefono,c.notas].join(' ').toLowerCase().includes(q));
   const val = {nombre:x=>x.c.nombre.toLowerCase(), total:x=>x.r.total, ref:x=>x.r.nRef, ultCarga:x=>x.r.ultCarga||'', dias:x=>x.r.dias??-1};
   lista.sort((a,b)=>{ const A=val[orden.campo](a), B=val[orden.campo](b); return (A>B?1:A<B?-1:0)*orden.dir; });
+  // En "Para contactar" y "En riesgo", los clientes en riesgo van siempre primero (en orden de prioridad)
+  if(tab==='pend' || tab==='riesgo'){
+    const p = x => riesgoIds.has(x.c.id) && !x.rt.atendido ? riesgoIds.get(x.c.id) : (tab==='riesgo' ? 1e5 + riesgoIds.get(x.c.id) : 1e6);
+    lista.sort((a,b)=> p(a)-p(b));
+  }
 
   const t = document.getElementById('tabla');
   if(!lista.length){
-    t.innerHTML = `<div class="vacio">${db.clientes.length ? (tab==='pend'?'🎉 Estás al día con todos.':'No hay resultados.') : 'Todavía no cargaste clientes.<br><br><button class="primary" onclick="abrirCliente()">+ Agregar el primero</button>'}</div>`;
+    t.innerHTML = `<div class="vacio">${db.clientes.length ? (tab==='pend'?'🎉 Estás al día con todos.':tab==='riesgo'?'🎉 Ningún cliente bajó su ritmo de carga.<br><span style="font-size:13px">(Se calcula para clientes con cargas en al menos 3 días distintos.)</span>':'No hay resultados.') : 'Todavía no cargaste clientes.<br><br><button class="primary" onclick="abrirCliente()">+ Agregar el primero</button>'}</div>`;
     return;
   }
   const flecha = k => orden.campo===k ? (orden.dir>0?' ▲':' ▼') : '';
@@ -265,10 +316,12 @@ function render(){
       <th class="col-opt" onclick="ordenar('ultCarga')">Última carga${flecha('ultCarga')}</th>
       <th onclick="ordenar('dias')">Último contacto${flecha('dias')}</th>
       <th></th></tr></thead><tbody>
-    ${lista.map(({c,r})=>{
+    ${lista.map(({c,r,rt})=>{
       const venc = !c.pausado && r.dias > db.settings.dias;
+      const chip = !c.pausado && rt && rt.enRiesgo
+        ? `<div class="chip-riesgo ${rt.atendido?'atendido':''}" title="Cargaba ${fmtProm(rt.prom)}">${rt.atendido?'🔥 en riesgo · ya contactado':`🔥 ${rt.sin} días sin cargar · cargaba ${fmtProm(rt.prom)}`}</div>` : '';
       return `<tr class="fila" onclick="abrirCliente('${c.id}')">
-        <td><b>${esc(c.nombre)}</b>${c.usuario?`<div class="muted" style="font-size:13px">@${esc(c.usuario)}</div>`:''}${c.referidoPor&&nombreDe(c.referidoPor)?`<div class="muted" style="font-size:12px">↳ referido por ${esc(nombreDe(c.referidoPor))}</div>`:''}</td>
+        <td><b>${esc(c.nombre)}</b>${c.usuario?`<div class="muted" style="font-size:13px">@${esc(c.usuario)}</div>`:''}${c.referidoPor&&nombreDe(c.referidoPor)?`<div class="muted" style="font-size:12px">↳ referido por ${esc(nombreDe(c.referidoPor))}</div>`:''}${chip}</td>
         <td class="col-opt">${waLink(c.telefono)}</td>
         <td class="num">${fmt$(r.total)}<div class="muted" style="font-size:12px">${r.nCargas} carga${r.nCargas!==1?'s':''}</div></td>
         <td class="num">${r.nRef ? `<b>👥 ${r.nRef}</b>` : '<span class="muted">0</span>'}${r.pendientes?`<div class="vencido" style="font-size:12px" title="Bonos pendientes de pagar">🎁 ${r.pendientes} pend.</div>`:''}</td>
@@ -351,6 +404,11 @@ function abrirCliente(id){
     ${!nuevo?`<label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:14px;color:var(--text)">
       <input type="checkbox" id="fPausado" style="width:auto" ${c.pausado?'checked':''}> Pausar recordatorios para este cliente</label>`:''}
 
+    ${nuevo ? '' : (()=>{ const rt = ritmo(c); return rt ? `
+    <div class="alerta ${rt.enRiesgo && !rt.atendido && !c.pausado ? 'riesgo' : ''}" style="margin:12px 0 0">
+      ${rt.enRiesgo ? '🔥' : '📈'} <span class="grow">Ritmo de carga: <b>${fmtProm(rt.prom)}</b> en promedio · última carga hace <b>${rt.sin} días</b>.
+      ${rt.enRiesgo ? (rt.atendido ? ' Está en riesgo, pero ya lo contactaste.' : ` <b>En riesgo</b> desde el ${fmtFecha(rt.desde)}: contactalo con prioridad.`) : ` Pasa a "en riesgo" si llega a ${rt.umbral} días sin cargar.`}</span>
+    </div>` : ''; })()}
     ${nuevo ? '' : `
     <div class="stats">
       <div class="stat"><div class="v">${fmt$(r.total)}</div><div class="l">Total cargado (${r.nCargas})</div></div>
@@ -488,6 +546,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ cerrar('mCliente
 /* ---------- ajustes / backup ---------- */
 function abrirAjustes(){
   document.getElementById('cfgDias').value = db.settings.dias;
+  document.getElementById('cfgRiesgo').value = db.settings.riesgoFactor;
   document.getElementById('cfgBonoMonto').value = db.settings.bonoMonto;
   document.getElementById('cfgBonoCada').value = db.settings.bonoCada;
   estadoNotif();
@@ -496,6 +555,8 @@ function abrirAjustes(){
 function guardarAjustes(){
   const d = parseInt(document.getElementById('cfgDias').value,10);
   if(d>0) db.settings.dias = d;
+  const rf = parseFloat(document.getElementById('cfgRiesgo').value);
+  if(rf>=1.2) db.settings.riesgoFactor = rf;
   const bm = parseFloat(document.getElementById('cfgBonoMonto').value);
   if(bm>=0) db.settings.bonoMonto = bm;
   const bc = parseInt(document.getElementById('cfgBonoCada').value,10);
@@ -540,11 +601,15 @@ function estadoNotif(){
 }
 function pedirPermiso(){ if('Notification' in window) Notification.requestPermission().then(()=>{ estadoNotif(); avisar(); }); }
 function avisar(){
-  const p = pendientes();
-  if(!p.length || !('Notification' in window) || Notification.permission!=='granted') return;
-  try{
-    new Notification('Clientes para contactar', {body:`${p.length} sin contacto hace más de ${db.settings.dias} días: ${p.slice(0,4).map(c=>c.nombre).join(', ')}${p.length>4?'…':''}`});
-  }catch(e){}
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  const lista = (arr) => arr.slice(0,4).join(', ') + (arr.length>4?'…':'');
+  const r = enRiesgo(), p = pendientes();
+  const bonos = db.clientes.reduce((s,c)=>s+bono(c).pendientes,0);
+  const avisos = [];
+  if(r.length) avisos.push(['🔥 Clientes en riesgo', `${r.length} bajaron su ritmo de carga: ${lista(r.map(x=>x.c.nombre))}`]);
+  if(p.length) avisos.push(['Clientes para contactar', `${p.length} sin contacto hace más de ${db.settings.dias} días: ${lista(p.map(c=>c.nombre))}`]);
+  if(bonos) avisos.push(['🎁 Bonos pendientes', `${bonos} bono${bonos>1?'s':''} por pagar (${fmtBs(bonos*db.settings.bonoMonto)})`]);
+  avisos.forEach(([t,body])=>{ try{ new Notification(t,{body}); }catch(e){} });
 }
 
 document.getElementById('buscar').addEventListener('input', render);
