@@ -677,7 +677,7 @@ async function activarPush(){
 }
 async function probarPush(){
   const el = document.getElementById('estadoNotif');
-  try{ await syncPush(); const r = await pushFetch('/test', {}); el.textContent = r.ok ? '📨 Prueba enviada. Debería llegarte en unos segundos (si la app está abierta, quizás no la veas hasta salir).' : '❌ El servicio de avisos rechazó el envío (' + r.status + '). Probá Desactivar y Activar de nuevo.'; }
+  try{ await syncPush(); const r = await pushFetch('/test', {}); el.textContent = r.ok ? '📨 Prueba enviada. Debería llegarte en unos segundos (si la app está abierta, quizás no la veas hasta salir).' : '❌ El servicio de avisos rechazó el envío (' + r.status + (r.detalle ? ': ' + r.detalle : '') + '). Probá Desactivar y Activar de nuevo.'; }
   catch(e){ el.textContent = '❌ ' + e.message; }
 }
 async function desactivarPush(){

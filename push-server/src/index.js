@@ -83,7 +83,9 @@ export default {
         acc.prueba = true;
         await env.KV.put(key, JSON.stringify(acc));
         const r = await enviarPush(acc.sub, env);
-        return json({ ok: r.ok, status: r.status });
+        const detalle = r.ok ? '' : (await r.text().catch(() => '')).slice(0, 300);
+        if (r.status === 404 || r.status === 410) await env.KV.delete(key); // suscripción vencida: hay que reactivar
+        return json({ ok: r.ok, status: r.status, detalle });
       }
 
       // Desactivar este dispositivo
@@ -159,7 +161,9 @@ const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(
 const b64urlTxt = s => b64url(new TextEncoder().encode(s));
 
 async function vapidJWT(audience, env) {
-  const key = await crypto.subtle.importKey('jwk', JSON.parse(env.VAPID_PRIVATE_JWK), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  // El secreto puede venir con un BOM (U+FEFF) o saltos de línea si se cargó desde PowerShell: se limpian antes de leerlo.
+  const jwk = JSON.parse(String(env.VAPID_PRIVATE_JWK).replace(/^﻿/, '').trim());
+  const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
   const header = b64urlTxt(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
   const claims = b64urlTxt(JSON.stringify({ aud: audience, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: env.VAPID_SUBJECT }));
   const firma = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, new TextEncoder().encode(`${header}.${claims}`));
