@@ -441,11 +441,13 @@ const estrellas = pts => pts>=80?5 : pts>=60?4 : pts>=45?3 : pts>=30?2 : 1;
 const nivel = pts => pts>=60?'alta' : pts>=35?'media' : 'baja';
 const PTS_MANUAL = {alta:75, media:45, baja:20};
 const CACHE_PARTIDOS = 'clientes_partidos_v1';
-let partidos = null, partidosEstado = '', cargandoPartidos = false;
+let partidos = null, partidosEstado = '', cargandoPartidos = false, ultimoIntento = 0;
 try{ partidos = JSON.parse(localStorage.getItem(CACHE_PARTIDOS)); }catch(e){}
 async function cargarPartidos(forzar){
   if(cargandoPartidos) return;
   if(!forzar && partidos && Date.now() - (partidos.bajado||0) < 3*3600*1000) return;
+  if(!forzar && Date.now() - ultimoIntento < 10*60*1000) return;   // si falló, no reintentar en cada pantalla
+  ultimoIntento = Date.now();
   cargandoPartidos = true; partidosEstado = 'Actualizando partidos…';
   if(tab==='calendario') render();
   try{
