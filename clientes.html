@@ -83,6 +83,16 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
 .acciones{display:flex;gap:8px;justify-content:space-between;margin-top:18px;flex-wrap:wrap}
 .tipo-carga{color:var(--ok)} .tipo-retiro{color:var(--danger)}
 .tabs{flex-wrap:wrap}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tile.clic{cursor:pointer}
+.tile.clic:hover{border-color:var(--accent)}
+.tile-l{font-size:13px;color:var(--muted)}
+.tile-v{font-size:24px;font-weight:700;margin:4px 0 2px;font-variant-numeric:tabular-nums}
+.tile-x{font-size:12px;color:var(--muted)}
+.tile-alerta{border-color:var(--danger)}
+.tile-alerta .tile-v{color:var(--danger)}
+@media (max-width:700px){ .tiles{grid-template-columns:1fr 1fr} .tile-v{font-size:20px} }
 .card{overflow-x:auto}
 @media (max-width:700px){
   .grid2{grid-template-columns:1fr}
@@ -120,12 +130,14 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
   <div id="alerta"></div>
   <div id="alertaBonos"></div>
   <div class="tabs">
-    <button id="tabTodos" class="on" onclick="setTab('todos')">Todos <span id="cTodos" class="muted"></span></button>
+    <button id="tabInicio" class="on" onclick="setTab('inicio')">🏠 Inicio</button>
+    <button id="tabTodos" onclick="setTab('todos')">Todos <span id="cTodos" class="muted"></span></button>
     <button id="tabRiesgo" onclick="setTab('riesgo')">🔥 En riesgo <span id="cRiesgo"></span></button>
     <button id="tabPend" onclick="setTab('pend')">Para contactar <span id="cPend"></span></button>
     <button id="tabRank" onclick="setTab('ranking')">🏆 Ranking de referidores</button>
   </div>
-  <div class="card"><div id="tabla"></div></div>
+  <div id="inicio"></div>
+  <div class="card" id="cardTabla"><div id="tabla"></div></div>
 </main>
 
 <!-- Modal cliente -->
@@ -182,7 +194,7 @@ const KEY = 'metabet_clientes_v1';
 let db = cargar();
 const DEF_SETTINGS = {dias:7, bonoMonto:30, bonoCada:3, riesgoFactor:2};
 db.settings = Object.assign({}, DEF_SETTINGS, db.settings);
-let tab = 'todos', orden = {campo:'dias', dir:-1}, abierto = null;
+let tab = 'inicio', orden = {campo:'dias', dir:-1}, abierto = null;
 
 /* ---------- datos ---------- */
 function cargar(){
@@ -268,6 +280,7 @@ function render(){
   document.getElementById('cTodos').textContent = db.clientes.length;
   document.getElementById('cPend').innerHTML = pend.length ? `<span class="badge">${pend.length}</span>` : '<span class="muted">0</span>';
   document.getElementById('tabTodos').classList.toggle('on', tab==='todos');
+  document.getElementById('tabInicio').classList.toggle('on', tab==='inicio');
   document.getElementById('tabPend').classList.toggle('on', tab==='pend');
   document.getElementById('tabRank').classList.toggle('on', tab==='ranking');
   document.getElementById('tabRiesgo').classList.toggle('on', tab==='riesgo');
@@ -300,6 +313,12 @@ function render(){
   ab.innerHTML = (db.clientes.length && (!ub || diasDesde(ub) > 7))
     ? `<div class="alerta">💾 <span class="grow">${ub?`Tu última copia de seguridad es del ${fmtFecha(ub)}.`:'Todavía no hiciste ninguna copia de seguridad.'}</span><button class="small" onclick="exportarJSON()">Exportar ahora</button></div>` : '';
 
+  // En Inicio, el resumen reemplaza a los avisos de arriba y a la tabla
+  const enInicio = tab==='inicio';
+  ['alertaRiesgo','alerta','alertaBonos'].forEach(id=>document.getElementById(id).style.display = enInicio ? 'none' : '');
+  document.getElementById('inicio').style.display = enInicio ? '' : 'none';
+  document.getElementById('cardTabla').style.display = enInicio ? 'none' : '';
+  if(enInicio){ renderInicio(); return; }
   if(tab==='ranking'){ renderRanking(q); return; }
   const riesgoIds = new Map(enRiesgo(true).map((x,i)=>[x.c.id, i]));
   let lista = (tab==='pend' ? pend : tab==='riesgo' ? enRiesgo(true).map(x=>x.c) : db.clientes).map(c=>({c, r:resumen(c), rt:ritmo(c)}));
@@ -340,6 +359,60 @@ function render(){
         <td><button class="small" title="Marcar contactado hoy" onclick="event.stopPropagation();contactadoHoy('${c.id}')">✓ Contacté</button></td>
       </tr>`;}).join('')}
     </tbody></table>`;
+}
+/* ---------- Inicio (dashboard) ---------- */
+// Los más urgentes: primero en riesgo sin contactar (los que más se alejaron de su ritmo), después los que más días llevan sin contacto.
+function urgentes(n){
+  const lista = enRiesgo().map(x=>({c:x.c, motivo:`🔥 ${x.rt.sin} días sin cargar (cargaba ${fmtProm(x.rt.prom)})`, clase:'vencido'}));
+  const ya = new Set(lista.map(x=>x.c.id));
+  pendientes().filter(c=>!ya.has(c.id)).map(c=>({c, d:resumen(c).dias})).sort((a,b)=>b.d-a.d)
+    .forEach(x=>lista.push({c:x.c, motivo:`⏰ Sin contacto ${textoDias(x.d)}`, clase:'vencido'}));
+  return lista.slice(0, n);
+}
+function renderInicio(){
+  const el = document.getElementById('inicio');
+  if(!db.clientes.length){
+    el.innerHTML = `<div class="card vacio">👋 Bienvenido. Todavía no cargaste clientes.<br><br><button class="primary" onclick="abrirCliente()">+ Agregar el primero</button></div>`;
+    return;
+  }
+  const h = hoy(), lunes = sumarDias(h, -((new Date().getDay()+6)%7));
+  const cargas = db.clientes.flatMap(c=>c.cargas.filter(m=>m.tipo!=='retiro').map(m=>({...m, cid:c.id})));
+  const deHoy = cargas.filter(m=>m.fecha===h), deSemana = cargas.filter(m=>m.fecha>=lunes && m.fecha<=h);
+  const suma = arr => arr.reduce((s,m)=>s+Number(m.monto),0);
+  const clientesSemana = new Set(deSemana.map(m=>m.cid)).size;
+  const riesgo = enRiesgo(), pend = pendientes();
+  const bonos = db.clientes.reduce((s,c)=>s+bono(c).pendientes,0);
+  const urg = urgentes(3);
+  const tile = (icono, valor, etiqueta, extra, onclick, alerta) => `
+    <div class="tile ${alerta?'tile-alerta':''} ${onclick?'clic':''}" ${onclick?`onclick="${onclick}"`:''}>
+      <div class="tile-l">${icono} ${etiqueta}</div>
+      <div class="tile-v">${valor}</div>
+      <div class="tile-x">${extra}</div>
+    </div>`;
+  el.innerHTML = `
+    <div class="tiles">
+      ${tile('💰', fmt$(suma(deHoy)), 'Cargado hoy', `${deHoy.length} carga${deHoy.length!==1?'s':''}`)}
+      ${tile('📅', fmt$(suma(deSemana)), 'Esta semana', `${deSemana.length} carga${deSemana.length!==1?'s':''} · ${clientesSemana} cliente${clientesSemana!==1?'s':''} · desde el lun ${fmtFecha(lunes).slice(0,5)}`)}
+      ${tile('🔥', riesgo.length, 'Clientes en riesgo', riesgo.length?'bajaron su ritmo de carga':'nadie bajó su ritmo', "setTab('riesgo')", riesgo.length)}
+      ${tile('🎁', bonos, 'Bonos por pagar', bonos?fmtBs(bonos*db.settings.bonoMonto):'todo pagado', "setTab('ranking')", bonos)}
+    </div>
+    <div class="card" style="margin-top:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 14px 4px;gap:10px;flex-wrap:wrap">
+        <h3 style="margin:0;font-size:16px">🚨 Contactar primero</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${riesgo.length?`<button class="small" onclick="setTab('riesgo')">🔥 En riesgo (${riesgo.length})</button>`:''}
+          <button class="small" onclick="setTab('pend')">⏰ Para contactar (${pend.length})</button>
+        </div>
+      </div>
+      ${urg.length ? `<table>${urg.map((u,i)=>`<tr class="fila" onclick="abrirCliente('${u.c.id}')">
+        <td style="width:34px;font-weight:700;font-size:18px" class="muted">${i+1}</td>
+        <td><b>${esc(u.c.nombre)}</b><div class="${u.clase}" style="font-size:13px">${u.motivo}</div></td>
+        <td style="text-align:right;white-space:nowrap" onclick="event.stopPropagation()">
+          ${u.c.telefono?`<a class="wa" href="https://wa.me/${u.c.telefono.replace(/\D/g,'')}" target="_blank" style="margin-right:8px">💬</a>`:''}
+          <button class="small" onclick="contactadoHoy('${u.c.id}')">✓ Contacté</button></td>
+      </tr>`).join('')}</table>`
+      : `<div class="vacio" style="padding:24px">🎉 Estás al día: nadie urgente para contactar.</div>`}
+    </div>`;
 }
 function renderRanking(q){
   const t = document.getElementById('tabla');
@@ -714,9 +787,9 @@ function avisar(){
   avisos.forEach(([t,body])=>{ try{ new Notification(t,{body}); }catch(e){} });
 }
 
-document.getElementById('buscar').addEventListener('input', render);
+document.getElementById('buscar').addEventListener('input', ()=>{ if(tab==='inicio') tab='todos'; render(); });
 // Abrir en una pestaña concreta (al tocar una notificación)
-{ const t = new URLSearchParams(location.search).get('tab'); if(['todos','riesgo','pend','ranking'].includes(t)) tab = t; }
+{ const t = new URLSearchParams(location.search).get('tab'); if(['inicio','todos','riesgo','pend','ranking'].includes(t)) tab = t; }
 if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e=>{ if(e.data && e.data.tab){ setTab(e.data.tab); } });
 render();
 // Al abrir: mandar el resumen actualizado si cambió (las alertas también cambian con el paso de los días)
