@@ -1,0 +1,5 @@
+# Copias de seguridad y exportaciones con datos de clientes: nunca subirlas
+*.json
+!manifest.json
+*.csv
+.claude/

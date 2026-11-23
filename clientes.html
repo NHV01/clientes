@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mis Clientes</title>
+<!-- PWA: instalable con "Añadir a pantalla de inicio" -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2563eb">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Clientes">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<style>
+:root{
+  --bg:#f4f5f7; --panel:#fff; --text:#1c1e21; --muted:#6b7280; --line:#e3e5e8;
+  --accent:#2563eb; --accent-text:#fff; --danger:#dc2626; --warn-bg:#fff4e5; --warn:#b45309;
+  --ok:#15803d; --chip:#eef2ff;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14161a; --panel:#1d2026; --text:#e8eaed; --muted:#9aa0a6; --line:#2e323a;
+    --accent:#3b82f6; --accent-text:#fff; --danger:#f87171; --warn-bg:#3a2a12; --warn:#fbbf24;
+    --ok:#4ade80; --chip:#252a36;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:14px 20px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0 12px 0 0}
+main{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+input,textarea,select{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+textarea{min-height:70px;resize:vertical}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:8px;padding:8px 12px}
+button:hover{filter:brightness(.97)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+button.danger{color:var(--danger)}
+button.small{padding:4px 9px;font-size:13px}
+.grow{flex:1}
+#buscar{max-width:280px}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button.on{background:var(--accent);color:var(--accent-text);border-color:var(--accent)}
+.badge{display:inline-block;min-width:20px;padding:0 6px;border-radius:10px;background:var(--danger);color:#fff;font-size:12px;text-align:center;margin-left:4px}
+.alerta{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.alerta b{color:inherit}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
+tr.fila{cursor:pointer}
+tr.fila:hover td{background:var(--chip)}
+tr:last-child td{border-bottom:none}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.vencido{color:var(--danger);font-weight:600}
+.okc{color:var(--ok)}
+.vacio{padding:40px;text-align:center;color:var(--muted)}
+.wa{color:var(--ok);text-decoration:none;font-weight:600}
+/* modal */
+.fondo{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-start;justify-content:center;padding:30px 12px;overflow:auto;z-index:10}
+.fondo.on{display:flex}
+.modal{background:var(--panel);border-radius:14px;width:100%;max-width:760px;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+.modal h2{margin:0 0 14px;font-size:20px;display:flex;align-items:center;gap:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
+.seccion{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
+.seccion h3{margin:0 0 10px;font-size:15px}
+.fila-form{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.fila-form > div{flex:1;min-width:120px}
+.hist{max-height:260px;overflow:auto;margin-top:10px;border:1px solid var(--line);border-radius:8px}
+.hist td{padding:7px 10px;font-size:14px}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.stat{background:var(--chip);border-radius:10px;padding:8px 12px;flex:1;min-width:120px}
+.stat .v{font-size:18px;font-weight:700}
+.stat .l{font-size:12px;color:var(--muted)}
+.acciones{display:flex;gap:8px;justify-content:space-between;margin-top:18px;flex-wrap:wrap}
+.tipo-carga{color:var(--ok)} .tipo-retiro{color:var(--danger)}
+.tabs{flex-wrap:wrap}
+.card{overflow-x:auto}
+@media (max-width:700px){
+  .grid2{grid-template-columns:1fr}
+  .col-opt{display:none}
+  #buscar{max-width:none;order:9;flex-basis:100%}
+  header h1{flex:1;white-space:nowrap}
+  .card table{min-width:560px}
+  td b{white-space:nowrap}
+  /* 16px evita que el iPhone haga zoom al tocar un campo */
+  input,textarea,select{font-size:16px}
+  header{padding:10px 12px}
+  header h1{font-size:17px}
+  main{padding:12px 10px 40px}
+  th,td{padding:8px 8px}
+  .modal{padding:16px}
+  .fondo{padding:10px 6px}
+}
+/* Abierta como app instalada (sin barra de Safari) */
+@media (display-mode: standalone){
+  body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>👥 Mis Clientes</h1>
+  <input id="buscar" class="grow" placeholder="Buscar por nombre, usuario o teléfono…">
+  <button class="primary" onclick="abrirCliente()">+ Nuevo cliente</button>
+  <button onclick="abrirAjustes()">⚙️ Ajustes</button>
+</header>
+
+<main>
+  <div id="alertaBackup"></div>
+  <div id="alerta"></div>
+  <div id="alertaBonos"></div>
+  <div class="tabs">
+    <button id="tabTodos" class="on" onclick="setTab('todos')">Todos <span id="cTodos" class="muted"></span></button>
+    <button id="tabPend" onclick="setTab('pend')">Para contactar <span id="cPend"></span></button>
+    <button id="tabRank" onclick="setTab('ranking')">🏆 Ranking de referidores</button>
+  </div>
+  <div class="card"><div id="tabla"></div></div>
+</main>
+
+<!-- Modal cliente -->
+<div class="fondo" id="mCliente" onclick="if(event.target===this)cerrar('mCliente')">
+  <div class="modal" id="mClienteBody"></div>
+</div>
+
+<!-- Modal ajustes -->
+<div class="fondo" id="mAjustes" onclick="if(event.target===this)cerrar('mAjustes')">
+  <div class="modal">
+    <h2>⚙️ Ajustes</h2>
+    <label>Avisarme de clientes sin contacto hace más de (días)</label>
+    <input type="number" id="cfgDias" min="1" style="max-width:120px">
+    <label style="margin-top:12px">Bono por referidos</label>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      Bs <input type="number" id="cfgBonoMonto" min="0" step="any" style="max-width:100px">
+      cada <input type="number" id="cfgBonoCada" min="1" step="1" style="max-width:80px"> referidos con primera carga
+    </div>
+    <div class="seccion">
+      <h3>Avisos de escritorio</h3>
+      <p class="muted" style="margin:0 0 8px">Cuando abrís la app (y cada hora si la dejás abierta) te avisa a quién tenés que contactar.</p>
+      <button onclick="pedirPermiso()">🔔 Activar notificaciones</button> <span id="estadoNotif" class="muted"></span>
+    </div>
+    <div class="seccion">
+      <h3>Copia de seguridad</h3>
+      <p class="muted" style="margin:0 0 8px">Los datos se guardan en este navegador, en esta computadora. Exportá una copia cada tanto.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="exportarJSON()">⬇️ Exportar copia (.json)</button>
+        <button onclick="document.getElementById('archivo').click()">⬆️ Importar copia</button>
+        <button onclick="exportarCSV()">📊 Exportar a Excel (.csv)</button>
+        <input type="file" id="archivo" accept=".json" style="display:none" onchange="importarJSON(this)">
+      </div>
+    </div>
+    <div class="acciones"><span></span><button class="primary" onclick="guardarAjustes()">Guardar</button></div>
+  </div>
+</div>
+
+<script>
+const KEY = 'metabet_clientes_v1';
+let db = cargar();
+const DEF_SETTINGS = {dias:7, bonoMonto:30, bonoCada:3};
+db.settings = Object.assign({}, DEF_SETTINGS, db.settings);
+let tab = 'todos', orden = {campo:'dias', dir:-1}, abierto = null;
+
+/* ---------- datos ---------- */
+function cargar(){
+  try{ const d = JSON.parse(localStorage.getItem(KEY)); if(d && d.clientes) return d; }catch(e){}
+  return {settings:{dias:7, ultimoBackup:null}, clientes:[]};
+}
+function guardar(){
+  try{ localStorage.setItem(KEY, JSON.stringify(db)); }
+  catch(e){ alert('No se pudo guardar en el navegador. Exportá una copia ya.'); }
+}
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const hoy = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+function diasDesde(iso){
+  if(!iso) return null;
+  const [y,m,d] = iso.slice(0,10).split('-').map(Number);
+  const a = new Date(y,m-1,d), b = new Date(); b.setHours(0,0,0,0);
+  return Math.round((b-a)/86400000);
+}
+const fmtFecha = iso => { if(!iso) return '—'; const [y,m,d]=iso.slice(0,10).split('-'); return `${d}/${m}/${y}`; };
+const fmt$ = n => 'Bs ' + Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:2});
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function ultimoContacto(c){
+  const fechas = [c.creado, ...c.contactos.map(x=>x.fecha), ...c.cargas.map(x=>x.fecha)].filter(Boolean).sort();
+  return fechas[fechas.length-1] || null;
+}
+function resumen(c){
+  const cargas = c.cargas.filter(x=>x.tipo!=='retiro'), retiros = c.cargas.filter(x=>x.tipo==='retiro');
+  const total = cargas.reduce((s,x)=>s+Number(x.monto),0);
+  const totalRet = retiros.reduce((s,x)=>s+Number(x.monto),0);
+  const ultCarga = cargas.map(x=>x.fecha).sort().pop() || null;
+  const uc = ultimoContacto(c);
+  return {total, totalRet, nCargas:cargas.length, ultCarga, uc, dias: diasDesde(uc), nRef: referidosDe(c.id).length, ...bono(c)};
+}
+function primeraCarga(x){
+  return x.cargas.filter(m=>m.tipo!=='retiro').sort((a,b)=>a.fecha.localeCompare(b.fecha) || (a.id>b.id?1:-1))[0] || null;
+}
+// Bono: Bs [bonoMonto] por cada [bonoCada] referidos activos (que ya hicieron su primera carga).
+// Cada pago se guarda como un registro en c.bonos30Pagados (1 registro = 1 bono pagado).
+function bono(c){
+  const cada = Math.max(1, Number(db.settings.bonoCada)||3);
+  const activos = referidosDe(c.id).filter(x=>primeraCarga(x)).length;
+  const ganados = Math.floor(activos / cada);
+  const pagados = (c.bonos30Pagados||[]).length;
+  return {activos, ganados, pagados, pendientes: Math.max(0, ganados - pagados), faltan: cada - (activos % cada)};
+}
+const fmtBs = n => 'Bs ' + Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:2});
+const referidosDe = id => id ? db.clientes.filter(x => x.referidoPor === id) : [];
+const nombreDe = id => (db.clientes.find(x=>x.id===id)||{}).nombre || '';
+const pendientes = () => db.clientes.filter(c => !c.pausado && resumen(c).dias > db.settings.dias);
+
+/* ---------- lista ---------- */
+function render(){
+  const q = document.getElementById('buscar').value.trim().toLowerCase();
+  const pend = pendientes();
+  document.getElementById('cTodos').textContent = db.clientes.length;
+  document.getElementById('cPend').innerHTML = pend.length ? `<span class="badge">${pend.length}</span>` : '<span class="muted">0</span>';
+  document.getElementById('tabTodos').classList.toggle('on', tab==='todos');
+  document.getElementById('tabPend').classList.toggle('on', tab==='pend');
+  document.getElementById('tabRank').classList.toggle('on', tab==='ranking');
+
+  // alerta
+  const al = document.getElementById('alerta');
+  if(pend.length){
+    const nombres = pend.sort((a,b)=>resumen(b).dias-resumen(a).dias).slice(0,5).map(c=>esc(c.nombre)).join(', ');
+    al.innerHTML = `<div class="alerta">⏰ <span class="grow"><b>${pend.length}</b> cliente${pend.length>1?'s':''} sin contacto hace más de ${db.settings.dias} días: ${nombres}${pend.length>5?'…':''}</span>
+      ${tab!=='pend'?'<button class="small" onclick="setTab(\'pend\')">Ver lista</button>':''}</div>`;
+  } else al.innerHTML = '';
+
+  // total de bonos pendientes de todos los clientes
+  const conBono = db.clientes.map(c=>({c, n:bono(c).pendientes})).filter(x=>x.n).sort((a,b)=>b.n-a.n);
+  const totPend = conBono.reduce((s,x)=>s+x.n,0);
+  document.getElementById('alertaBonos').innerHTML = totPend
+    ? `<div class="alerta">🎁 <span class="grow"><b>${totPend}</b> bono${totPend>1?'s':''} pendiente${totPend>1?'s':''} de pagar · total <b>${fmtBs(totPend*db.settings.bonoMonto)}</b>:
+       ${conBono.map(x=>`<a href="#" style="color:inherit" onclick="abrirCliente('${x.c.id}');return false">${esc(x.c.nombre)} (${x.n})</a>`).join(', ')}</span></div>`
+    : '';
+
+  // alerta backup
+  const ub = db.settings.ultimoBackup, ab = document.getElementById('alertaBackup');
+  ab.innerHTML = (db.clientes.length && (!ub || diasDesde(ub) > 7))
+    ? `<div class="alerta">💾 <span class="grow">${ub?`Tu última copia de seguridad es del ${fmtFecha(ub)}.`:'Todavía no hiciste ninguna copia de seguridad.'}</span><button class="small" onclick="exportarJSON()">Exportar ahora</button></div>` : '';
+
+  if(tab==='ranking'){ renderRanking(q); return; }
+  let lista = (tab==='pend' ? pend : db.clientes).map(c=>({c, r:resumen(c)}));
+  if(q) lista = lista.filter(({c}) => [c.nombre,c.usuario,c.telefono,c.notas].join(' ').toLowerCase().includes(q));
+  const val = {nombre:x=>x.c.nombre.toLowerCase(), total:x=>x.r.total, ref:x=>x.r.nRef, ultCarga:x=>x.r.ultCarga||'', dias:x=>x.r.dias??-1};
+  lista.sort((a,b)=>{ const A=val[orden.campo](a), B=val[orden.campo](b); return (A>B?1:A<B?-1:0)*orden.dir; });
+
+  const t = document.getElementById('tabla');
+  if(!lista.length){
+    t.innerHTML = `<div class="vacio">${db.clientes.length ? (tab==='pend'?'🎉 Estás al día con todos.':'No hay resultados.') : 'Todavía no cargaste clientes.<br><br><button class="primary" onclick="abrirCliente()">+ Agregar el primero</button>'}</div>`;
+    return;
+  }
+  const flecha = k => orden.campo===k ? (orden.dir>0?' ▲':' ▼') : '';
+  t.innerHTML = `<table><thead><tr>
+      <th onclick="ordenar('nombre')">Cliente${flecha('nombre')}</th>
+      <th class="col-opt">Contacto</th>
+      <th class="num" onclick="ordenar('total')">Total cargado${flecha('total')}</th>
+      <th class="num" onclick="ordenar('ref')" title="Ordenar por más referidos">Referidos${flecha('ref')}</th>
+      <th class="col-opt" onclick="ordenar('ultCarga')">Última carga${flecha('ultCarga')}</th>
+      <th onclick="ordenar('dias')">Último contacto${flecha('dias')}</th>
+      <th></th></tr></thead><tbody>
+    ${lista.map(({c,r})=>{
+      const venc = !c.pausado && r.dias > db.settings.dias;
+      return `<tr class="fila" onclick="abrirCliente('${c.id}')">
+        <td><b>${esc(c.nombre)}</b>${c.usuario?`<div class="muted" style="font-size:13px">@${esc(c.usuario)}</div>`:''}${c.referidoPor&&nombreDe(c.referidoPor)?`<div class="muted" style="font-size:12px">↳ referido por ${esc(nombreDe(c.referidoPor))}</div>`:''}</td>
+        <td class="col-opt">${waLink(c.telefono)}</td>
+        <td class="num">${fmt$(r.total)}<div class="muted" style="font-size:12px">${r.nCargas} carga${r.nCargas!==1?'s':''}</div></td>
+        <td class="num">${r.nRef ? `<b>👥 ${r.nRef}</b>` : '<span class="muted">0</span>'}${r.pendientes?`<div class="vencido" style="font-size:12px" title="Bonos pendientes de pagar">🎁 ${r.pendientes} pend.</div>`:''}</td>
+        <td class="col-opt">${fmtFecha(r.ultCarga)}</td>
+        <td class="${c.pausado?'muted':venc?'vencido':'okc'}">${c.pausado?'⏸ pausado':textoDias(r.dias)}</td>
+        <td><button class="small" title="Marcar contactado hoy" onclick="event.stopPropagation();contactadoHoy('${c.id}')">✓ Contacté</button></td>
+      </tr>`;}).join('')}
+    </tbody></table>`;
+}
+function renderRanking(q){
+  const t = document.getElementById('tabla');
+  // Todos los clientes, de más a menos referidos activos (desempate: más referidos en total, luego nombre)
+  const todos = db.clientes.map(c=>({c, r:resumen(c)}))
+    .sort((a,b)=> b.r.activos-a.r.activos || b.r.nRef-a.r.nRef || a.c.nombre.localeCompare(b.c.nombre,'es'));
+  todos.forEach((x,i)=> x.pos = i+1);
+  const lista = q ? todos.filter(({c}) => [c.nombre,c.usuario,c.telefono,c.notas].join(' ').toLowerCase().includes(q)) : todos;
+  if(!lista.length){ t.innerHTML = `<div class="vacio">${db.clientes.length?'No hay resultados.':'Todavía no cargaste clientes.'}</div>`; return; }
+  const sum = k => todos.reduce((s,x)=>s+x.r[k],0);
+  const medalla = x => x.r.activos && x.pos<=3 ? ['🥇','🥈','🥉'][x.pos-1] : x.pos;
+  t.innerHTML = `<table><thead><tr>
+      <th class="num" style="width:50px">#</th><th>Cliente</th>
+      <th class="num">Referidos activos</th><th class="num">Bonos ganados</th>
+      <th class="num col-opt">Pagados</th><th class="num">Pendientes de pagar</th>
+      <th class="num col-opt">Faltan p/ próximo</th></tr></thead><tbody>
+    ${lista.map(x=>{ const {c,r}=x; return `<tr class="fila" onclick="abrirCliente('${c.id}')">
+      <td class="num">${medalla(x)}</td>
+      <td><b>${esc(c.nombre)}</b>${c.usuario?`<div class="muted" style="font-size:13px">@${esc(c.usuario)}</div>`:''}</td>
+      <td class="num"><b>${r.activos}</b> <span class="muted" style="font-size:12px">de ${r.nRef}</span></td>
+      <td class="num">${r.ganados}</td>
+      <td class="num col-opt">${r.pagados}</td>
+      <td class="num ${r.pendientes?'vencido':'muted'}">${r.pendientes}${r.pendientes?`<div style="font-size:12px">${fmtBs(r.pendientes*db.settings.bonoMonto)}</div>`:''}</td>
+      <td class="num col-opt muted">${r.faltan}</td></tr>`;}).join('')}
+    <tr><td></td><td><b>Total${q?' (todos los clientes)':''}</b></td>
+      <td class="num"><b>${sum('activos')}</b></td><td class="num"><b>${sum('ganados')}</b></td>
+      <td class="num col-opt"><b>${sum('pagados')}</b></td>
+      <td class="num ${sum('pendientes')?'vencido':''}"><b>${sum('pendientes')}</b><div style="font-size:12px">${fmtBs(sum('pendientes')*db.settings.bonoMonto)}</div></td>
+      <td class="col-opt"></td></tr>
+    </tbody></table>`;
+}
+function textoDias(d){ if(d===null) return '—'; if(d<=0) return 'hoy'; if(d===1) return 'ayer'; return `hace ${d} días`; }
+function waLink(tel){
+  if(!tel) return '<span class="muted">—</span>';
+  const n = tel.replace(/\D/g,'');
+  return `<a class="wa" href="https://wa.me/${n}" target="_blank" onclick="event.stopPropagation()">💬 ${esc(tel)}</a>`;
+}
+function setTab(t){ tab=t; render(); }
+function ordenar(k){ if(orden.campo===k) orden.dir*=-1; else {orden.campo=k; orden.dir = k==='nombre'?1:-1;} render(); }
+
+/* ---------- acciones ---------- */
+function contactadoHoy(id, nota=''){
+  const c = db.clientes.find(x=>x.id===id);
+  c.contactos.push({id:uid(), fecha:hoy(), nota});
+  guardar(); render(); if(abierto===id) abrirCliente(id);
+}
+
+function abrirCliente(id){
+  const nuevo = !id;
+  const c = nuevo ? {id:null,nombre:'',telefono:'',usuario:'',notas:'',cargas:[],contactos:[],creado:hoy()} : db.clientes.find(x=>x.id===id);
+  abierto = id || null;
+  const r = resumen(c);
+  const hist = [
+    ...c.cargas.map(x=>({...x, k:'carga'})),
+    ...c.contactos.map(x=>({...x, k:'contacto'}))
+  ].sort((a,b)=> b.fecha.localeCompare(a.fecha) || (b.id>a.id?1:-1));
+
+  document.getElementById('mClienteBody').innerHTML = `
+    <h2>${nuevo?'Nuevo cliente':esc(c.nombre)} ${!nuevo&&c.telefono?waLink(c.telefono):''}</h2>
+    <div class="grid2">
+      <div><label>Nombre *</label><input id="fNombre" value="${esc(c.nombre)}"></div>
+      <div><label>Usuario en MetaBet</label><input id="fUsuario" value="${esc(c.usuario)}"></div>
+      <div><label>Teléfono / WhatsApp</label><input id="fTel" value="${esc(c.telefono)}" placeholder="ej: 5491122334455"></div>
+      <div><label>Otro contacto (IG, mail…)</label><input id="fOtro" value="${esc(c.otro||'')}"></div>
+      <div><label>Referido por</label><select id="fReferido">
+        <option value="">— Ninguno —</option>
+        ${db.clientes.filter(x=>x.id!==c.id).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'))
+          .map(x=>`<option value="${x.id}" ${c.referidoPor===x.id?'selected':''}>${esc(x.nombre)}${x.usuario?' (@'+esc(x.usuario)+')':''}</option>`).join('')}
+      </select></div>
+    </div>
+    <div style="margin-top:10px"><label>Notas</label><textarea id="fNotas">${esc(c.notas)}</textarea></div>
+    ${!nuevo?`<label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:14px;color:var(--text)">
+      <input type="checkbox" id="fPausado" style="width:auto" ${c.pausado?'checked':''}> Pausar recordatorios para este cliente</label>`:''}
+
+    ${nuevo ? '' : `
+    <div class="stats">
+      <div class="stat"><div class="v">${fmt$(r.total)}</div><div class="l">Total cargado (${r.nCargas})</div></div>
+      <div class="stat"><div class="v">👥 ${r.nRef}</div><div class="l">Total de referidos</div></div>
+      <div class="stat"><div class="v ${r.pendientes?'vencido':''}">🎁 ${r.pendientes}</div><div class="l">Bonos pendientes (${fmtBs(r.pendientes*db.settings.bonoMonto)})</div></div>
+      <div class="stat"><div class="v">${fmt$(r.totalRet)}</div><div class="l">Total retirado</div></div>
+      <div class="stat"><div class="v">${fmt$(r.nCargas? r.total/r.nCargas : 0)}</div><div class="l">Carga promedio</div></div>
+      <div class="stat"><div class="v ${r.dias>db.settings.dias?'vencido':''}">${textoDias(r.dias)}</div><div class="l">Último contacto</div></div>
+    </div>
+
+    <div class="seccion">
+      <h3>Bono por referidos · ${fmtBs(db.settings.bonoMonto)} cada ${db.settings.bonoCada} referidos activos</h3>
+      <div class="stats" style="margin-top:0">
+        <div class="stat"><div class="v">${r.activos}</div><div class="l">Referidos activos (de ${r.nRef})</div></div>
+        <div class="stat"><div class="v">${r.ganados}</div><div class="l">Bonos ganados</div></div>
+        <div class="stat"><div class="v">${r.pagados}</div><div class="l">Bonos pagados</div></div>
+        <div class="stat"><div class="v ${r.pendientes?'vencido':''}">${r.pendientes}</div><div class="l">Pendientes de pagar</div></div>
+        <div class="stat"><div class="v">${r.faltan}</div><div class="l">Le falta${r.faltan>1?'n':''} para el próximo</div></div>
+      </div>
+      ${r.pagados > r.ganados ? `<p class="vencido" style="font-size:13px">⚠️ Tiene ${r.pagados} bonos pagados pero hoy solo le corresponden ${r.ganados} (¿se borró o cambió algún referido?).</p>` : ''}
+      <div class="fila-form" style="margin-top:10px">
+        <div style="max-width:170px"><label>Fecha de pago</label><input id="bFecha" type="date" value="${hoy()}"></div>
+        <button class="primary" ${r.pendientes?'':'disabled style="opacity:.5;cursor:default"'} onclick="pagarBono('${c.id}')">Marcar bono pagado (${fmtBs(db.settings.bonoMonto)})</button>
+      </div>
+      ${(c.bonos30Pagados||[]).length ? `<div class="hist"><table>${[...c.bonos30Pagados].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(p=>`<tr>
+        <td class="muted">${fmtFecha(p.fecha)}</td><td class="okc">✅ Bono pagado</td><td class="num">${fmtBs(p.monto)}</td>
+        <td><button class="small danger" title="Deshacer este pago" onclick="deshacerBono('${c.id}','${p.id}')">✕</button></td></tr>`).join('')}</table></div>` : ''}
+    </div>
+
+    <div class="seccion">
+      <h3>Referidos traídos (${r.nRef})</h3>
+      ${r.nRef ? `<div class="hist"><table>${referidosDe(c.id).map(x=>{ const pc=primeraCarga(x); return `<tr class="fila" onclick="abrirCliente('${x.id}')">
+        <td><b>${esc(x.nombre)}</b>${x.usuario?` <span class="muted">@${esc(x.usuario)}</span>`:''}</td>
+        <td>${pc?`<span class="okc">✓ activo</span> <span class="muted" style="font-size:13px">1ª carga ${fmtFecha(pc.fecha)}</span>`:'<span class="muted">sin primera carga</span>'}</td>
+        <td class="num">${fmt$(resumen(x).total)}</td></tr>`;}).join('')}</table></div>`
+        : '<p class="muted" style="margin:0">Todavía no trajo a nadie.</p>'}
+    </div>
+
+    <div class="seccion">
+      <h3>Registrar movimiento</h3>
+      <div class="fila-form">
+        <div style="max-width:120px"><label>Tipo</label><select id="mTipo"><option value="carga">Carga</option><option value="retiro">Retiro</option></select></div>
+        <div><label>Monto</label><input id="mMonto" type="number" min="0" step="any" placeholder="0"></div>
+        <div><label>Fecha</label><input id="mFecha" type="date" value="${hoy()}"></div>
+        <div style="flex:2"><label>Nota (opcional)</label><input id="mNota"></div>
+        <button class="primary" onclick="agregarMov('${c.id}')">Agregar</button>
+      </div>
+    </div>
+
+    <div class="seccion">
+      <h3>Registrar contacto</h3>
+      <div class="fila-form">
+        <div><label>Fecha</label><input id="cFecha" type="date" value="${hoy()}"></div>
+        <div style="flex:3"><label>¿Qué hablaron? (opcional)</label><input id="cNota" placeholder="ej: le pasé la promo del finde"></div>
+        <button onclick="agregarContacto('${c.id}')">✓ Registrar</button>
+      </div>
+    </div>
+
+    <div class="seccion">
+      <h3>Historial</h3>
+      ${hist.length ? `<div class="hist"><table>${hist.map(h=>`<tr>
+        <td class="muted" style="white-space:nowrap">${fmtFecha(h.fecha)}</td>
+        <td>${h.k==='contacto' ? '💬 Contacto' : h.tipo==='retiro' ? '<span class="tipo-retiro">↓ Retiro</span>' : '<span class="tipo-carga">↑ Carga</span>'}</td>
+        <td class="num">${h.k==='carga'?fmt$(h.monto):''}</td>
+        <td>${esc(h.nota)}</td>
+        <td><button class="small danger" title="Borrar" onclick="borrarItem('${c.id}','${h.k}','${h.id}')">✕</button></td>
+      </tr>`).join('')}</table></div>` : '<p class="muted">Sin movimientos todavía.</p>'}
+    </div>`}
+
+    <div class="acciones">
+      ${nuevo?'<span></span>':`<button class="danger" onclick="borrarCliente('${c.id}')">Eliminar cliente</button>`}
+      <div style="display:flex;gap:8px">
+        <button onclick="cerrar('mCliente')">Cerrar</button>
+        <button class="primary" onclick="guardarCliente(${nuevo?'null':`'${c.id}'`})">${nuevo?'Crear cliente':'Guardar datos'}</button>
+      </div>
+    </div>`;
+  document.getElementById('mCliente').classList.add('on');
+  if(nuevo) setTimeout(()=>document.getElementById('fNombre').focus(),30);
+}
+
+function guardarCliente(id){
+  const v = k => document.getElementById(k).value.trim();
+  const nombre = v('fNombre');
+  if(!nombre){ alert('Poné al menos el nombre.'); return; }
+  let c = id ? db.clientes.find(x=>x.id===id) : null;
+  if(!c){ c = {id:uid(), cargas:[], contactos:[], creado:hoy()}; db.clientes.push(c); }
+  Object.assign(c, {nombre, usuario:v('fUsuario').replace(/^@/,''), telefono:v('fTel'), otro:v('fOtro'), notas:document.getElementById('fNotas').value, referidoPor:v('fReferido') || null});
+  const p = document.getElementById('fPausado'); if(p) c.pausado = p.checked;
+  guardar(); render();
+  if(id) cerrar('mCliente'); else abrirCliente(c.id);
+}
+function agregarMov(id){
+  const monto = parseFloat(document.getElementById('mMonto').value);
+  if(!(monto>0)){ alert('Ingresá un monto válido.'); return; }
+  const c = db.clientes.find(x=>x.id===id);
+  c.cargas.push({id:uid(), tipo:document.getElementById('mTipo').value, monto, fecha:document.getElementById('mFecha').value||hoy(), nota:document.getElementById('mNota').value.trim()});
+  guardar(); render(); abrirCliente(id);
+}
+function agregarContacto(id){
+  const c = db.clientes.find(x=>x.id===id);
+  c.contactos.push({id:uid(), fecha:document.getElementById('cFecha').value||hoy(), nota:document.getElementById('cNota').value.trim()});
+  guardar(); render(); abrirCliente(id);
+}
+// Paga UN solo bono (resta 1 de pendientes). Si no hay pendientes, no hace nada: no se paga de más.
+function pagarBono(cid){
+  const c = db.clientes.find(x=>x.id===cid);
+  if(!bono(c).pendientes) return;
+  c.bonos30Pagados = c.bonos30Pagados || [];
+  c.bonos30Pagados.push({id:uid(), fecha:document.getElementById('bFecha').value||hoy(), monto:Number(db.settings.bonoMonto)});
+  guardar(); render(); abrirCliente(cid);
+}
+function deshacerBono(cid, pid){
+  if(!confirm('¿Borrar este pago? El bono vuelve a quedar pendiente.')) return;
+  const c = db.clientes.find(x=>x.id===cid);
+  c.bonos30Pagados = (c.bonos30Pagados||[]).filter(p=>p.id!==pid);
+  guardar(); render(); abrirCliente(cid);
+}
+function borrarItem(cid, k, iid){
+  if(!confirm('¿Borrar este registro?')) return;
+  const c = db.clientes.find(x=>x.id===cid);
+  if(k==='carga') c.cargas = c.cargas.filter(x=>x.id!==iid); else c.contactos = c.contactos.filter(x=>x.id!==iid);
+  guardar(); render(); abrirCliente(cid);
+}
+function borrarCliente(id){
+  const c = db.clientes.find(x=>x.id===id);
+  const nr = referidosDe(id).length;
+  if(!confirm(`¿Eliminar a ${c.nombre} y todo su historial? No se puede deshacer.${nr?`\n(${nr} cliente${nr>1?'s':''} referido${nr>1?'s':''} por él/ella quedarán sin "Referido por".)`:''}`)) return;
+  db.clientes = db.clientes.filter(x=>x.id!==id);
+  db.clientes.forEach(x=>{ if(x.referidoPor===id) x.referidoPor=null; });
+  guardar(); cerrar('mCliente'); render();
+}
+function cerrar(m){ document.getElementById(m).classList.remove('on'); if(m==='mCliente') abierto=null; }
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ cerrar('mCliente'); cerrar('mAjustes'); }});
+
+/* ---------- ajustes / backup ---------- */
+function abrirAjustes(){
+  document.getElementById('cfgDias').value = db.settings.dias;
+  document.getElementById('cfgBonoMonto').value = db.settings.bonoMonto;
+  document.getElementById('cfgBonoCada').value = db.settings.bonoCada;
+  estadoNotif();
+  document.getElementById('mAjustes').classList.add('on');
+}
+function guardarAjustes(){
+  const d = parseInt(document.getElementById('cfgDias').value,10);
+  if(d>0) db.settings.dias = d;
+  const bm = parseFloat(document.getElementById('cfgBonoMonto').value);
+  if(bm>=0) db.settings.bonoMonto = bm;
+  const bc = parseInt(document.getElementById('cfgBonoCada').value,10);
+  if(bc>=1) db.settings.bonoCada = bc;
+  guardar(); cerrar('mAjustes'); render();
+}
+function descargar(nombre, contenido, tipo){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([contenido],{type:tipo}));
+  a.download = nombre; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function exportarJSON(){
+  db.settings.ultimoBackup = hoy(); guardar();
+  descargar(`clientes-backup-${hoy()}.json`, JSON.stringify(db,null,2), 'application/json'); render();
+}
+function importarJSON(input){
+  const f = input.files[0]; if(!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try{
+      const d = JSON.parse(rd.result);
+      if(!Array.isArray(d.clientes)) throw 0;
+      if(!confirm(`Esto reemplaza los datos actuales por la copia (${d.clientes.length} clientes). ¿Seguir?`)) return;
+      db = d; db.settings = Object.assign({}, DEF_SETTINGS, d.settings); guardar(); render(); cerrar('mAjustes');
+    }catch(e){ alert('El archivo no es una copia válida.'); }
+    input.value='';
+  };
+  rd.readAsText(f);
+}
+function exportarCSV(){
+  const q = s => `"${String(s??'').replace(/"/g,'""')}"`;
+  const filas = [['Nombre','Usuario','Telefono','Otro contacto','Total cargado','Total retirado','Cant. cargas','Ultima carga','Ultimo contacto','Dias sin contacto','Referido por','Total referidos','Referidos activos','Bonos ganados','Bonos pagados','Bonos pendientes','Notas']];
+  db.clientes.forEach(c=>{ const r=resumen(c); filas.push([c.nombre,c.usuario,c.telefono,c.otro,r.total,r.totalRet,r.nCargas,fmtFecha(r.ultCarga),fmtFecha(r.uc),r.dias,nombreDe(c.referidoPor),r.nRef,r.activos,r.ganados,r.pagados,r.pendientes,c.notas]); });
+  descargar(`clientes-${hoy()}.csv`, '﻿'+filas.map(f=>f.map(q).join(';')).join('\r\n'), 'text/csv');
+}
+
+/* ---------- notificaciones ---------- */
+function estadoNotif(){
+  const el = document.getElementById('estadoNotif');
+  if(!('Notification' in window)) el.textContent = 'Este navegador no soporta notificaciones.';
+  else el.textContent = {granted:'✅ Activadas', denied:'❌ Bloqueadas en el navegador', default:''}[Notification.permission];
+}
+function pedirPermiso(){ if('Notification' in window) Notification.requestPermission().then(()=>{ estadoNotif(); avisar(); }); }
+function avisar(){
+  const p = pendientes();
+  if(!p.length || !('Notification' in window) || Notification.permission!=='granted') return;
+  try{
+    new Notification('Clientes para contactar', {body:`${p.length} sin contacto hace más de ${db.settings.dias} días: ${p.slice(0,4).map(c=>c.nombre).join(', ')}${p.length>4?'…':''}`});
+  }catch(e){}
+}
+
+document.getElementById('buscar').addEventListener('input', render);
+render();
+setTimeout(avisar, 1500);
+setInterval(()=>{ render(); avisar(); }, 3600*1000);
+</script>
+</body>
+</html>
