@@ -35,6 +35,17 @@ export default {
     try {
       if (url.pathname === '/vapid') return json({ publicKey: env.VAPID_PUBLIC });
 
+      // Partidos próximos (datos públicos, se actualizan solos una vez por día)
+      if (url.pathname === '/partidos') {
+        let datos = await env.KV.get('partidos', 'json');
+        const viejo = !datos || (Date.now() - Date.parse(datos.actualizado)) > 20 * 3600 * 1000;
+        if (viejo && env.FOOTBALL_DATA_KEY) {
+          try { datos = await actualizarPartidos(env); } catch (e) { if (!datos) return json({ error: 'No se pudieron traer los partidos: ' + e.message }, 502); }
+        }
+        if (!datos) return json({ error: env.FOOTBALL_DATA_KEY ? 'sin datos todavía' : 'falta configurar la clave de football-data.org', partidos: [] }, 503);
+        return json(datos);
+      }
+
       const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
       if (!/^[a-f0-9]{64}$/.test(token)) return json({ error: 'token inválido' }, 401);
       const key = 'acc:' + token;
@@ -103,8 +114,44 @@ export default {
   // Cron: cada hora en punto
   async scheduled(event, env, ctx) {
     ctx.waitUntil(revisarTodos(env));
+    // Una vez por día (09:00 UTC = 05:00 en Bolivia) se renueva la lista de partidos
+    if (new Date(event.scheduledTime || Date.now()).getUTCHours() === 9 && env.FOOTBALL_DATA_KEY) {
+      ctx.waitUntil(actualizarPartidos(env).catch(() => {}));
+    }
   },
 };
+
+/* ---------- Partidos (football-data.org, plan gratis) ---------- */
+// Competiciones incluidas en el plan gratis que interesan
+const COMPETICIONES = ['CL', 'PL', 'PD', 'SA', 'BL1', 'FL1', 'PPL'];
+const DIAS_ADELANTE = 60;
+
+async function actualizarPartidos(env) {
+  const desde = new Date().toISOString().slice(0, 10);
+  const hasta = new Date(Date.now() + DIAS_ADELANTE * 86400000).toISOString().slice(0, 10);
+  const partidos = [], errores = [];
+  for (const code of COMPETICIONES) {   // 7 consultas: dentro del límite de 10 por minuto
+    const r = await fetch(`https://api.football-data.org/v4/competitions/${code}/matches?dateFrom=${desde}&dateTo=${hasta}`, {
+      headers: { 'X-Auth-Token': env.FOOTBALL_DATA_KEY },
+    });
+    if (!r.ok) { errores.push(`${code}: ${r.status}`); continue; }
+    const j = await r.json();
+    for (const m of j.matches || []) {
+      if (['FINISHED', 'CANCELLED', 'AWARDED'].includes(m.status)) continue;
+      partidos.push({
+        id: m.id, f: m.utcDate, c: code, comp: j.competition?.name || code,
+        etapa: m.stage, j: m.matchday,
+        l: [m.homeTeam?.name || '', m.homeTeam?.shortName || ''],
+        v: [m.awayTeam?.name || '', m.awayTeam?.shortName || ''],
+        st: m.status,
+      });
+    }
+  }
+  if (!partidos.length && errores.length) throw new Error(errores.join(', '));
+  const datos = { actualizado: new Date().toISOString(), partidos, errores };
+  await env.KV.put('partidos', JSON.stringify(datos));
+  return datos;
+}
 
 async function leer(req) {
   const txt = await req.text();

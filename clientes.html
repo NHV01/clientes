@@ -366,7 +366,8 @@ function render(){
 /* ---------- Calendario de picos (fechas de fútbol) ---------- */
 // Fechas iniciales buscadas el 23/11/2026. Las marcadas "verificar" no están confirmadas oficialmente.
 const EVENTOS_INICIALES = [
-  ['2026-12-23','Cierre de la División Profesional 2026 (fecha aproximada)','Liga boliviana','media','Fin de temporada aprox. según Sofascore; confirmar la última fecha en la FBF',true],
+  ['2026-12-02','Oriente Petrolero vs Bolívar (fecha 28)','Liga boliviana','media','Grande vs grande; confirmar hora',true],
+  ['2026-12-13','Cierre de la División Profesional 2026','Liga boliviana','alta','Última fecha prevista por la FBF; se define el campeón',true],
   ['2027-02-03','Libertadores 2027 · Fase 1 (ida)','Copa Libertadores','alta','Los equipos bolivianos suelen entrar en las fases previas: confirmá quiénes juegan',true],
   ['2027-02-10','Libertadores 2027 · Fase 1 (vuelta)','Copa Libertadores','media','',true],
   ['2027-02-16','Champions · Play-off de eliminatorias (ida, día 1)','Champions League','media','También 17/02',false],
@@ -392,39 +393,142 @@ function asegurarEventos(){
   if(!Array.isArray(db.eventos)) db.eventos = [];
   if(!db.settings.eventosCargados){
     EVENTOS_INICIALES.forEach(([fecha,titulo,comp,imp,nota,verificar])=>db.eventos.push({id:uid(), fecha, hora:'', titulo, comp, imp, nota, verificar}));
-    db.settings.eventosCargados = true; guardar();
+    db.settings.eventosCargados = true; db.settings.eventosV2 = true; guardar();
   }
+  if(!db.settings.eventosV2){   // corrección de las fechas bolivianas cargadas el 23/11/2026
+    const cierre = db.eventos.find(e=>e.titulo.startsWith('Cierre de la División Profesional 2026') && e.fecha==='2026-12-23');
+    if(cierre) Object.assign(cierre, {fecha:'2026-12-13', titulo:'Cierre de la División Profesional 2026', imp:'alta', nota:'Última fecha prevista por la FBF; se define el campeón'});
+    if(!db.eventos.some(e=>e.titulo.startsWith('Oriente Petrolero vs Bolívar')))
+      db.eventos.push({id:uid(), fecha:'2026-12-02', hora:'', titulo:'Oriente Petrolero vs Bolívar (fecha 28)', comp:'Liga boliviana', imp:'media', nota:'Grande vs grande; confirmar hora', verificar:true});
+    db.settings.eventosV2 = true; guardar();
+  }
+}
+
+/* --- Partidos automáticos (football-data.org vía el servidor) y su importancia --- */
+// Equipos: [expresión para reconocerlo, nombre corto, puntos]
+const EQUIPOS = [
+  [/real madrid/i,'Real Madrid',25], [/barcelona|barça/i,'Barcelona',25], [/manchester city|man city/i,'Man City',25],
+  [/liverpool/i,'Liverpool',25], [/arsenal/i,'Arsenal',25], [/bayern/i,'Bayern',25], [/paris saint|^psg$|paris sg/i,'PSG',25],
+  [/atl[eé]tico( de)? madrid|^atleti/i,'Atlético',18], [/manchester united|man united|man utd/i,'Man United',18], [/chelsea/i,'Chelsea',18],
+  [/internazionale|^inter( milan| milano)?$|fc inter/i,'Inter',18], [/juventus/i,'Juventus',18], [/^ac milan|^milan$/i,'Milan',18],
+  [/tottenham|spurs/i,'Tottenham',10], [/newcastle/i,'Newcastle',10], [/dortmund|^bvb/i,'Dortmund',10], [/napoli/i,'Napoli',10],
+  [/leverkusen/i,'Leverkusen',10], [/benfica/i,'Benfica',10], [/^fc porto|^porto$/i,'Porto',10], [/sporting/i,'Sporting',10],
+  [/^as roma|^roma$/i,'Roma',10], [/aston villa/i,'Aston Villa',10], [/marseille/i,'Marsella',10],
+  [/everton/i,'Everton',0], [/lazio/i,'Lazio',0],
+];
+// Clásicos y derbis: [equipo A, equipo B, nombre, puntos extra]
+const DERBIS = [
+  ['Real Madrid','Barcelona','El Clásico',40], ['Real Madrid','Atlético','Derbi madrileño',25], ['Man City','Man United','Derbi de Manchester',30],
+  ['Liverpool','Man United','Liverpool vs United',30], ['Arsenal','Tottenham','Derbi del norte de Londres',25], ['Liverpool','Everton','Derbi de Merseyside',20],
+  ['Inter','Milan','Derby della Madonnina',30], ['Inter','Juventus',"Derby d'Italia",25], ['Roma','Lazio','Derby della Capitale',20],
+  ['Bayern','Dortmund','Der Klassiker',30], ['PSG','Marsella','Le Classique',25], ['Benfica','Porto','O Clássico',20], ['Benfica','Sporting','Derbi de Lisboa',20],
+];
+const BASE_COMP = {CL:20, PL:12, PD:12, SA:8, BL1:8, FL1:6, PPL:5};
+const NOMBRE_COMP = {CL:'Champions League', PL:'Premier League', PD:'LaLiga', SA:'Serie A', BL1:'Bundesliga', FL1:'Ligue 1', PPL:'Liga de Portugal'};
+const ETAPAS = {PLAYOFFS:['Play-off',10], LAST_16:['Octavos',20], QUARTER_FINALS:['Cuartos',30], SEMI_FINALS:['Semifinal',40], FINAL:['FINAL',70]};
+const equipo = ([nombre, corto]) => EQUIPOS.find(([re])=>re.test(nombre) || re.test(corto));
+function calificar(p){
+  const a = equipo(p.l), b = equipo(p.v);
+  const etapa = ETAPAS[p.etapa];
+  const derbi = a && b && DERBIS.find(([x,y])=>(x===a[1]&&y===b[1])||(x===b[1]&&y===a[1]));
+  let pts = (BASE_COMP[p.c]||5) + (a?a[2]:0) + (b?b[2]:0) + (derbi?derbi[3]:0) + (etapa?etapa[1]:0);
+  pts = Math.min(100, pts);
+  const motivo = derbi ? `🔥 ${derbi[2]}` : etapa ? `${etapa[0]} de ${NOMBRE_COMP[p.c]||p.comp}` : (a && b && a[2]>=18 && b[2]>=18) ? 'Duelo de grandes' : (a||b) && (a||b)[2]>=25 ? `Juega ${(a||b)[1]}` : '';
+  return {pts, motivo};
+}
+const estrellas = pts => pts>=80?5 : pts>=60?4 : pts>=45?3 : pts>=30?2 : 1;
+const nivel = pts => pts>=60?'alta' : pts>=35?'media' : 'baja';
+const PTS_MANUAL = {alta:75, media:45, baja:20};
+const CACHE_PARTIDOS = 'clientes_partidos_v1';
+let partidos = null, partidosEstado = '', cargandoPartidos = false;
+try{ partidos = JSON.parse(localStorage.getItem(CACHE_PARTIDOS)); }catch(e){}
+async function cargarPartidos(forzar){
+  if(cargandoPartidos) return;
+  if(!forzar && partidos && Date.now() - (partidos.bajado||0) < 3*3600*1000) return;
+  cargandoPartidos = true; partidosEstado = 'Actualizando partidos…';
+  if(tab==='calendario') render();
+  try{
+    const r = await fetch(PUSH_API + '/partidos', {cache:'no-store'});
+    const j = await r.json();
+    if(!r.ok) throw new Error(j.error || r.status);
+    partidos = {...j, bajado: Date.now()};
+    try{ localStorage.setItem(CACHE_PARTIDOS, JSON.stringify(partidos)); }catch(e){}
+    partidosEstado = '';
+  }catch(e){ partidosEstado = '⚠ No se pudieron traer los partidos automáticos: ' + e.message; }
+  cargandoPartidos = false;
+  if(tab==='calendario') render();
+}
+let calOrden = 'fecha', calComp = 'todas', calVerBaja = false;
+// Junta fechas manuales y partidos automáticos en una sola lista
+function itemsCalendario(){
+  const items = db.eventos.map(e=>({tipo:'manual', id:e.id, fecha:e.fecha, hora:e.hora||'', titulo:e.titulo, comp:e.comp||'Manual', grupo:'manual',
+    pts:PTS_MANUAL[e.imp]||45, nivel:e.imp, motivo:e.nota||'', verificar:e.verificar}));
+  ((partidos && partidos.partidos) || []).forEach(p=>{
+    const d = new Date(p.f);
+    const fecha = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const {pts, motivo} = calificar(p);
+    const nom = x => x[1] || x[0];
+    items.push({tipo:'auto', id:'p'+p.id, fecha, hora: p.st==='TIMED' ? d.toTimeString().slice(0,5) : '',
+      titulo:`${nom(p.l)} vs ${nom(p.v)}`, comp:(NOMBRE_COMP[p.c]||p.comp) + (p.j && !ETAPAS[p.etapa] ? ` · fecha ${p.j}` : ''), grupo:p.c,
+      pts, nivel:nivel(pts), motivo, verificar:false});
+  });
+  return items;
+}
+function renderCalendario(){
+  asegurarEventos();
+  cargarPartidos(false);
+  const t = document.getElementById('tabla'), h = hoy();
+  const q = document.getElementById('buscar').value.trim().toLowerCase();
+  const todos = itemsCalendario().map(e=>({...e, falta:-diasDesde(e.fecha)}));
+  let evs = todos
+    .filter(e=> verPasados ? e.fecha < h : e.fecha >= h)
+    .filter(e=> calComp==='todas' || e.grupo===calComp)
+    .filter(e=> calVerBaja || e.nivel!=='baja' || e.tipo==='manual')
+    .filter(e=> !q || [e.titulo,e.comp,e.motivo].join(' ').toLowerCase().includes(q));
+  const porFecha = (a,b)=> a.fecha.localeCompare(b.fecha) || (a.hora||'').localeCompare(b.hora||'');
+  evs.sort(verPasados ? (a,b)=>-porFecha(a,b) : calOrden==='imp' ? (a,b)=> b.pts-a.pts || porFecha(a,b) : porFecha);
+  // Destacados: lo más importante de los próximos 14 días
+  const destacados = todos.filter(e=>e.nivel==='alta' && e.falta>=0 && e.falta<=14).sort((a,b)=>a.falta-b.falta || b.pts-a.pts).slice(0,5);
+  const grupos = [['todas','Todas'],['manual','Mis fechas / Bolivia'],...Object.entries(NOMBRE_COMP)];
+  const abrir = e => e.tipo==='manual' ? `abrirEvento('${e.id}')` : `copiarComoFecha('${e.id}')`;
+  const star = n => '★'.repeat(n) + '<span style="opacity:.25">' + '★'.repeat(5-n) + '</span>';
+  const act = partidos && partidos.actualizado ? `Partidos automáticos actualizados el ${new Date(partidos.actualizado).toLocaleString('es-BO',{dateStyle:'short',timeStyle:'short'})}` : '';
+  t.innerHTML = `
+    <div style="padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)">
+      <select style="width:auto" onchange="calOrden=this.value;render()"><option value="fecha" ${calOrden==='fecha'?'selected':''}>📅 Por fecha</option><option value="imp" ${calOrden==='imp'?'selected':''}>⭐ Más importantes primero</option></select>
+      <select style="width:auto" onchange="calComp=this.value;render()">${grupos.map(([k,v])=>`<option value="${k}" ${calComp===k?'selected':''}>${v}</option>`).join('')}</select>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:14px;color:var(--text)"><input type="checkbox" style="width:auto" ${calVerBaja?'checked':''} onchange="calVerBaja=this.checked;render()"> Ver también los de 1★</label>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:14px;color:var(--text)"><input type="checkbox" style="width:auto" ${verPasados?'checked':''} onchange="verPasados=this.checked;render()"> Ver pasados</label>
+      <span class="grow"></span>
+      <button class="small" onclick="cargarPartidos(true)" title="Volver a pedir los partidos al servidor">↻</button>
+      <button class="primary small" onclick="abrirEvento()">+ Agregar fecha</button>
+    </div>
+    ${partidosEstado ? `<div class="muted" style="padding:8px 14px;font-size:13px;border-bottom:1px solid var(--line)">${esc(partidosEstado)}</div>` : ''}
+    ${destacados.length && !verPasados ? `<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)">${destacados.map(e=>`
+      <div class="alerta riesgo" style="margin:0;cursor:pointer" onclick="${abrir(e)}">⚽ <span class="grow"><b>${e.falta===0?'¡HOY!':e.falta===1?'¡Mañana!':`Faltan ${e.falta} días`}</b> · ${esc(e.titulo)}${e.motivo&&e.tipo==='auto'?` · ${esc(e.motivo)}`:''} <span style="opacity:.85">(${diaSemana(e.fecha)} ${fmtFecha(e.fecha).slice(0,5)}${e.hora?' '+esc(e.hora):''})</span></span></div>`).join('')}</div>` : ''}
+    ${evs.length ? `<table><tbody>${evs.map(e=>`<tr class="fila" onclick="${abrir(e)}">
+      <td style="white-space:nowrap;width:1%"><b>${fmtFecha(e.fecha).slice(0,5)}</b><div class="muted" style="font-size:12px">${diaSemana(e.fecha)}${e.hora?' · '+esc(e.hora):''}</div></td>
+      <td><b>${esc(e.titulo)}</b>${e.verificar?' <span class="chip-riesgo atendido" title="Fecha no confirmada oficialmente">⚠ verificar</span>':''}
+        <div class="muted" style="font-size:13px">${esc(e.comp)}${e.motivo?' · '+esc(e.motivo):''}</div></td>
+      <td style="white-space:nowrap;color:${e.nivel==='alta'?'var(--danger)':e.nivel==='media'?'#d97706':'var(--muted)'}" title="Importancia ${e.pts}/100">${star(estrellas(e.pts))}</td>
+      <td style="white-space:nowrap;text-align:right" class="${e.falta>=0 && e.falta<=7 && e.nivel!=='baja' ? 'vencido' : 'muted'}">${textoFaltan(e.falta)}</td>
+    </tr>`).join('')}</tbody></table>`
+    : `<div class="vacio">${verPasados?'No hay fechas pasadas.':'No hay próximas fechas con estos filtros.'}<br><br><button class="primary" onclick="abrirEvento()">+ Agregar fecha</button></div>`}
+    <div class="muted" style="padding:10px 14px;font-size:12px;border-top:1px solid var(--line)">
+      ★ = importancia según la competición, la fase y los rivales (grandes, clásicos y derbis). Tocá un partido automático para copiarlo a tus fechas y editarlo.
+      ${act ? '<br>' + act + '.' : ''} Datos de partidos: Football-Data.org.
+    </div>`;
+}
+// Un partido automático se puede copiar a "mis fechas" para cambiarle la importancia o agregarle notas
+function copiarComoFecha(id){
+  const e = itemsCalendario().find(x=>x.id===id); if(!e) return;
+  if(!confirm(`${e.titulo}\n${diaSemana(e.fecha)} ${fmtFecha(e.fecha)}${e.hora?' · '+e.hora:''}\n${e.comp}${e.motivo?' · '+e.motivo:''}\nImportancia: ${estrellas(e.pts)}★ (${e.pts}/100)\n\n¿Copiarlo a tus fechas para editarlo o agregarle notas?`)) return;
+  const nuevo = {id:uid(), fecha:e.fecha, hora:e.hora, titulo:e.titulo, comp:e.comp.split(' · ')[0], imp:e.nivel, nota:e.motivo, verificar:false};
+  db.eventos.push(nuevo); guardar(); abrirEvento(nuevo.id);
 }
 const diaSemana = iso => { const [y,m,d]=iso.split('-').map(Number); return DIAS_SEM[new Date(y,m-1,d).getDay()]; };
 const textoFaltan = d => d===0 ? '¡HOY!' : d===1 ? 'mañana' : d>1 ? `faltan ${d} días` : `hace ${-d} días`;
 let verPasados = false;
-function renderCalendario(){
-  asegurarEventos();
-  const t = document.getElementById('tabla'), h = hoy();
-  const q = document.getElementById('buscar').value.trim().toLowerCase();
-  let evs = db.eventos.map(e=>({...e, falta:-diasDesde(e.fecha)}))
-    .filter(e=> verPasados || e.fecha >= h)
-    .filter(e=> !q || [e.titulo,e.comp,e.nota].join(' ').toLowerCase().includes(q))
-    .sort((a,b)=> verPasados ? b.fecha.localeCompare(a.fecha) : (a.fecha.localeCompare(b.fecha) || (a.hora||'').localeCompare(b.hora||'')));
-  // Destacados: importancia alta en los próximos 14 días
-  const destacados = db.eventos.map(e=>({...e, falta:-diasDesde(e.fecha)})).filter(e=>e.imp==='alta' && e.falta>=0 && e.falta<=14).sort((a,b)=>a.falta-b.falta);
-  t.innerHTML = `
-    <div style="padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)">
-      <span class="grow muted" style="font-size:14px">Próximos partidos y fechas que suelen traer más cargas. Las fechas cambian: editalas cuando se confirmen.</span>
-      <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:14px;color:var(--text)"><input type="checkbox" style="width:auto" ${verPasados?'checked':''} onchange="verPasados=this.checked;render()"> Ver pasados</label>
-      <button class="primary small" onclick="abrirEvento()">+ Agregar fecha</button>
-    </div>
-    ${destacados.length && !verPasados ? `<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)">${destacados.map(e=>`
-      <div class="alerta riesgo" style="margin:0;cursor:pointer" onclick="abrirEvento('${e.id}')">⚽ <span class="grow"><b>${e.falta===0?'¡HOY!':e.falta===1?'¡Mañana!':`Faltan ${e.falta} días`}</b> · ${esc(e.titulo)} <span style="opacity:.85">(${diaSemana(e.fecha)} ${fmtFecha(e.fecha).slice(0,5)}${e.hora?' '+esc(e.hora):''})</span></span></div>`).join('')}</div>` : ''}
-    ${evs.length ? `<table><tbody>${evs.map(e=>`<tr class="fila" onclick="abrirEvento('${e.id}')">
-      <td style="white-space:nowrap;width:1%"><b>${fmtFecha(e.fecha).slice(0,5)}</b><div class="muted" style="font-size:12px">${diaSemana(e.fecha)} ${fmtFecha(e.fecha).slice(6)}${e.hora?' · '+esc(e.hora):''}</div></td>
-      <td><b>${esc(e.titulo)}</b>${e.verificar?' <span class="chip-riesgo atendido" title="Fecha no confirmada oficialmente">⚠ verificar</span>':''}
-        <div class="muted" style="font-size:13px">${esc(e.comp||'')}${e.nota?' · '+esc(e.nota):''}</div></td>
-      <td style="white-space:nowrap;font-size:13px">${IMPORTANCIAS[e.imp]||''}</td>
-      <td style="white-space:nowrap;text-align:right" class="${e.falta>=0 && e.falta<=7 && e.imp!=='baja' ? 'vencido' : 'muted'}">${textoFaltan(e.falta)}</td>
-    </tr>`).join('')}</tbody></table>`
-    : `<div class="vacio">${verPasados?'No hay fechas cargadas.':'No hay próximas fechas cargadas.'}<br><br><button class="primary" onclick="abrirEvento()">+ Agregar fecha</button></div>`}`;
-}
 function abrirEvento(id){
   asegurarEventos();
   const e = id ? db.eventos.find(x=>x.id===id) : {fecha:hoy(), hora:'', titulo:'', comp:'', imp:'alta', nota:'', verificar:false};
