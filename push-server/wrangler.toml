@@ -1,0 +1,18 @@
+name = "clientes-push"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# Revisa cada hora en punto; a cada dispositivo le avisa a la hora que eligió en la app.
+[triggers]
+crons = ["0 * * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "53818a4742194321b5f90a7e7d914e24"
+
+[vars]
+VAPID_PUBLIC = "BBIXdJhPPrG6SlMm-MKy3nWeY7WhZ_q1joksaCTwdJix0n-CZRpzqB_PkCup9JVvJGBR-sLREMf8HmVfHK2conQ"
+VAPID_SUBJECT = "https://nhv01.github.io/clientes/"
+ALLOWED_ORIGINS = "https://nhv01.github.io"
+# La clave privada (VAPID_PRIVATE_JWK) se guarda como secreto en Cloudflare, nunca en este archivo.

@@ -1,5 +1,7 @@
 # Copias de seguridad y exportaciones con datos de clientes: nunca subirlas
 *.json
 !manifest.json
+!push-server/package.json
+!push-server/package-lock.json
 *.csv
 .claude/

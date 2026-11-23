@@ -150,9 +150,18 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
       cada <input type="number" id="cfgBonoCada" min="1" step="1" style="max-width:80px"> referidos con primera carga
     </div>
     <div class="seccion">
-      <h3>Avisos de escritorio</h3>
-      <p class="muted" style="margin:0 0 8px">Cuando abrís la app (y cada hora si la dejás abierta) te avisa a quién tenés que contactar.</p>
-      <button onclick="pedirPermiso()">🔔 Activar notificaciones</button> <span id="estadoNotif" class="muted"></span>
+      <h3>🔔 Notificaciones push</h3>
+      <p class="muted" style="margin:0 0 8px">Te llega un aviso diario al teléfono (aunque la app esté cerrada) con los clientes en riesgo, los que no contactás hace más de los días elegidos y los bonos pendientes.
+        Al servidor de avisos solo se envía el <b>nombre</b> de cada cliente, las <b>fechas</b> de sus alertas y la <b>cantidad de bonos</b>; nunca teléfonos, montos ni notas.</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        Aviso diario a las <select id="cfgPushHora" style="width:auto"></select>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="primary" id="btnPushOn" onclick="activarPush()">🔔 Activar notificaciones push</button>
+        <button id="btnPushTest" onclick="probarPush()">Enviar prueba</button>
+        <button id="btnPushOff" class="danger" onclick="desactivarPush()">Desactivar</button>
+      </div>
+      <p id="estadoNotif" class="muted" style="margin:8px 0 0;font-size:14px"></p>
     </div>
     <div class="seccion">
       <h3>Copia de seguridad</h3>
@@ -183,6 +192,7 @@ function cargar(){
 function guardar(){
   try{ localStorage.setItem(KEY, JSON.stringify(db)); }
   catch(e){ alert('No se pudo guardar en el navegador. Exportá una copia ya.'); }
+  if(typeof programarSyncPush === 'function') programarSyncPush();
 }
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const hoy = () => { const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
@@ -555,6 +565,7 @@ function abrirAjustes(){
 function guardarAjustes(){
   const d = parseInt(document.getElementById('cfgDias').value,10);
   if(d>0) db.settings.dias = d;
+  db.settings.pushHora = parseInt(document.getElementById('cfgPushHora').value,10);
   const rf = parseFloat(document.getElementById('cfgRiesgo').value);
   if(rf>=1.2) db.settings.riesgoFactor = rf;
   const bm = parseFloat(document.getElementById('cfgBonoMonto').value);
@@ -593,14 +604,105 @@ function exportarCSV(){
   descargar(`clientes-${hoy()}.csv`, '﻿'+filas.map(f=>f.map(q).join(';')).join('\r\n'), 'text/csv');
 }
 
-/* ---------- notificaciones ---------- */
-function estadoNotif(){
-  const el = document.getElementById('estadoNotif');
-  if(!('Notification' in window)) el.textContent = 'Este navegador no soporta notificaciones.';
-  else el.textContent = {granted:'✅ Activadas', denied:'❌ Bloqueadas en el navegador', default:''}[Notification.permission];
+/* ---------- notificaciones push (servidor en Cloudflare) ---------- */
+const PUSH_API = 'https://clientes-push.clientes-push.workers.dev';
+const PUSH_KEY = 'clientes_push_v1';   // aparte de los datos: no va en las copias de seguridad
+const pushCfg = () => { try{ return JSON.parse(localStorage.getItem(PUSH_KEY)) || {}; }catch(e){ return {}; } };
+const setPushCfg = o => { try{ localStorage.setItem(PUSH_KEY, JSON.stringify(o)); }catch(e){} };
+const esIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const instalada = navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+
+// Resumen mínimo para el servidor: [nombre, fecha en que pasa a "sin contacto", fecha en que entra en riesgo, prioridad, bonos pendientes]
+function snapshotPush(){
+  return {
+    dias: db.settings.dias, bm: db.settings.bonoMonto,
+    c: db.clientes.map(c=>{
+      const rt = ritmo(c), uc = ultimoContacto(c);
+      const contacto = !c.pausado && uc ? sumarDias(uc, db.settings.dias + 1) : null;
+      const riesgo = !c.pausado && rt && !rt.atendido ? rt.desde : null;
+      return [c.nombre, contacto, riesgo, rt ? Math.round(100/rt.prom) : 0, bono(c).pendientes];
+    })
+  };
 }
-function pedirPermiso(){ if('Notification' in window) Notification.requestPermission().then(()=>{ estadoNotif(); avisar(); }); }
+async function pushFetch(path, body){
+  const r = await fetch(PUSH_API + path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + (pushCfg().token||'') },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error || ('error ' + r.status));
+  return j;
+}
+const tzLocal = () => -new Date().getTimezoneOffset();
+let pushTimer = null;
+function programarSyncPush(){
+  if(!pushCfg().on) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(syncPush, 3000);
+}
+async function syncPush(){
+  const cfg = pushCfg(); if(!cfg.on) return;
+  const body = { snap: snapshotPush(), hora: db.settings.pushHora ?? 9, tz: tzLocal() };
+  const firma = JSON.stringify(body);
+  if(firma === cfg.ultimo) return;          // no cambió nada: no gastar escrituras
+  try{ await pushFetch('/sync', body); cfg.ultimo = firma; cfg.sync = new Date().toISOString(); setPushCfg(cfg); }catch(e){}
+}
+function b64ToBytes(b64){ const s = atob(b64.replace(/-/g,'+').replace(/_/g,'/') + '==='.slice((b64.length+3)%4)); return Uint8Array.from(s, ch=>ch.charCodeAt(0)); }
+
+async function activarPush(){
+  if(esIOS && !instalada){ alert('En iPhone, primero instalá la app: en Safari tocá Compartir → "Añadir a pantalla de inicio", y abrila desde el ícono. Las notificaciones solo funcionan así.'); return; }
+  if(!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)){ alert('Este navegador no soporta notificaciones push. En iPhone necesitás iOS 16.4 o más nuevo.'); return; }
+  if(location.protocol !== 'https:'){ alert('Las notificaciones push solo funcionan abriendo la app desde su dirección web (https).'); return; }
+  const permiso = await Notification.requestPermission();   // primero, mientras dura el toque del botón
+  if(permiso !== 'granted'){ alert('No diste permiso. En el iPhone podés activarlo en Ajustes → Notificaciones → Clientes.'); estadoNotif(); return; }
+  const el = document.getElementById('estadoNotif'); el.textContent = 'Activando…';
+  try{
+    const cfg = pushCfg();
+    if(!cfg.token) cfg.token = [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');
+    setPushCfg(cfg);
+    const reg = await navigator.serviceWorker.register(`sw.js?t=${cfg.token}&api=${encodeURIComponent(PUSH_API)}`);
+    await navigator.serviceWorker.ready;
+    const { publicKey } = await pushFetch('/vapid');
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: b64ToBytes(publicKey) });
+    db.settings.pushHora = parseInt(document.getElementById('cfgPushHora').value,10); guardar();
+    const body = { sub: sub.toJSON(), snap: snapshotPush(), hora: db.settings.pushHora, tz: tzLocal() };
+    await pushFetch('/subscribe', body);
+    Object.assign(cfg, { on:true, ultimo: JSON.stringify({snap:body.snap, hora:body.hora, tz:body.tz}), sync:new Date().toISOString() });
+    setPushCfg(cfg);
+    estadoNotif();
+    if(confirm('✅ Notificaciones activadas. ¿Te mando una de prueba ahora?')) probarPush();
+  }catch(e){ el.textContent = '❌ No se pudo activar: ' + e.message; }
+}
+async function probarPush(){
+  const el = document.getElementById('estadoNotif');
+  try{ await syncPush(); const r = await pushFetch('/test', {}); el.textContent = r.ok ? '📨 Prueba enviada. Debería llegarte en unos segundos (si la app está abierta, quizás no la veas hasta salir).' : '❌ El servicio de avisos rechazó el envío (' + r.status + '). Probá Desactivar y Activar de nuevo.'; }
+  catch(e){ el.textContent = '❌ ' + e.message; }
+}
+async function desactivarPush(){
+  if(!confirm('¿Desactivar las notificaciones push en este dispositivo?')) return;
+  try{ await pushFetch('/unsubscribe', {}); }catch(e){}
+  try{ const reg = await navigator.serviceWorker.getRegistration(); if(reg){ const s = await reg.pushManager.getSubscription(); if(s) await s.unsubscribe(); await reg.unregister(); } }catch(e){}
+  setPushCfg({});
+  estadoNotif();
+}
+function estadoNotif(){
+  const el = document.getElementById('estadoNotif'), cfg = pushCfg();
+  const sel = document.getElementById('cfgPushHora');
+  if(!sel.options.length) for(let h=0; h<24; h++) sel.add(new Option(String(h).padStart(2,'0') + ':00', h));
+  sel.value = db.settings.pushHora ?? 9;
+  document.getElementById('btnPushOn').style.display = cfg.on ? 'none' : '';
+  document.getElementById('btnPushTest').style.display = cfg.on ? '' : 'none';
+  document.getElementById('btnPushOff').style.display = cfg.on ? '' : 'none';
+  if(cfg.on) el.textContent = `✅ Activadas en este dispositivo. Último envío de datos: ${cfg.sync ? new Date(cfg.sync).toLocaleString('es-BO') : '—'}`;
+  else if(esIOS && !instalada) el.textContent = '📱 Para activarlas en iPhone, primero instalá la app con "Añadir a pantalla de inicio" desde Safari y abrila desde el ícono.';
+  else if('Notification' in window && Notification.permission === 'denied') el.textContent = '❌ Las notificaciones están bloqueadas para esta app en la configuración del dispositivo.';
+  else el.textContent = 'Desactivadas en este dispositivo.';
+}
+
 function avisar(){
+  if(pushCfg().on) return;   // con push activado, los avisos llegan por el servidor
   if(!('Notification' in window) || Notification.permission!=='granted') return;
   const lista = (arr) => arr.slice(0,4).join(', ') + (arr.length>4?'…':'');
   const r = enRiesgo(), p = pendientes();
@@ -613,7 +715,13 @@ function avisar(){
 }
 
 document.getElementById('buscar').addEventListener('input', render);
+// Abrir en una pestaña concreta (al tocar una notificación)
+{ const t = new URLSearchParams(location.search).get('tab'); if(['todos','riesgo','pend','ranking'].includes(t)) tab = t; }
+if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e=>{ if(e.data && e.data.tab){ setTab(e.data.tab); } });
 render();
+// Al abrir: mandar el resumen actualizado si cambió (las alertas también cambian con el paso de los días)
+if(pushCfg().on) setTimeout(syncPush, 1000);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible'){ render(); if(pushCfg().on) syncPush(); } });
 setTimeout(avisar, 1500);
 setInterval(()=>{ render(); avisar(); }, 3600*1000);
 </script>

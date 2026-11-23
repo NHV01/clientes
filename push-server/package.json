@@ -1,0 +1,12 @@
+{
+  "name": "clientes-push",
+  "private": true,
+  "type": "module",
+  "description": "Servidor de notificaciones push de la app Mis Clientes (Cloudflare Worker)",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.166.0"
+  }
+}
