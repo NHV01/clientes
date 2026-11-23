@@ -135,6 +135,7 @@ label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
     <button id="tabRiesgo" onclick="setTab('riesgo')">🔥 En riesgo <span id="cRiesgo"></span></button>
     <button id="tabPend" onclick="setTab('pend')">Para contactar <span id="cPend"></span></button>
     <button id="tabRank" onclick="setTab('ranking')">🏆 Ranking de referidores</button>
+    <button id="tabCal" onclick="setTab('calendario')">⚽ Calendario de picos</button>
   </div>
   <div id="inicio"></div>
   <div class="card" id="cardTabla"><div id="tabla"></div></div>
@@ -281,6 +282,7 @@ function render(){
   document.getElementById('cPend').innerHTML = pend.length ? `<span class="badge">${pend.length}</span>` : '<span class="muted">0</span>';
   document.getElementById('tabTodos').classList.toggle('on', tab==='todos');
   document.getElementById('tabInicio').classList.toggle('on', tab==='inicio');
+  document.getElementById('tabCal').classList.toggle('on', tab==='calendario');
   document.getElementById('tabPend').classList.toggle('on', tab==='pend');
   document.getElementById('tabRank').classList.toggle('on', tab==='ranking');
   document.getElementById('tabRiesgo').classList.toggle('on', tab==='riesgo');
@@ -319,6 +321,7 @@ function render(){
   document.getElementById('inicio').style.display = enInicio ? '' : 'none';
   document.getElementById('cardTabla').style.display = enInicio ? 'none' : '';
   if(enInicio){ renderInicio(); return; }
+  if(tab==='calendario'){ renderCalendario(); return; }
   if(tab==='ranking'){ renderRanking(q); return; }
   const riesgoIds = new Map(enRiesgo(true).map((x,i)=>[x.c.id, i]));
   let lista = (tab==='pend' ? pend : tab==='riesgo' ? enRiesgo(true).map(x=>x.c) : db.clientes).map(c=>({c, r:resumen(c), rt:ritmo(c)}));
@@ -360,6 +363,105 @@ function render(){
       </tr>`;}).join('')}
     </tbody></table>`;
 }
+/* ---------- Calendario de picos (fechas de fútbol) ---------- */
+// Fechas iniciales buscadas el 23/11/2026. Las marcadas "verificar" no están confirmadas oficialmente.
+const EVENTOS_INICIALES = [
+  ['2026-12-23','Cierre de la División Profesional 2026 (fecha aproximada)','Liga boliviana','media','Fin de temporada aprox. según Sofascore; confirmar la última fecha en la FBF',true],
+  ['2027-02-03','Libertadores 2027 · Fase 1 (ida)','Copa Libertadores','alta','Los equipos bolivianos suelen entrar en las fases previas: confirmá quiénes juegan',true],
+  ['2027-02-10','Libertadores 2027 · Fase 1 (vuelta)','Copa Libertadores','media','',true],
+  ['2027-02-16','Champions · Play-off de eliminatorias (ida, día 1)','Champions League','media','También 17/02',false],
+  ['2027-02-17','Libertadores 2027 · Fase 2 (ida)','Copa Libertadores','media','',true],
+  ['2027-02-23','Champions · Play-off de eliminatorias (vuelta, día 1)','Champions League','media','También 24/02',false],
+  ['2027-02-24','Libertadores 2027 · Fase 2 (vuelta)','Copa Libertadores','media','',true],
+  ['2027-03-03','Libertadores 2027 · Fase 3 (ida)','Copa Libertadores','media','',true],
+  ['2027-03-09','Champions · Octavos de final (ida, día 1)','Champions League','alta','También 10/03',false],
+  ['2027-03-10','Libertadores 2027 · Fase 3 (vuelta)','Copa Libertadores','media','',true],
+  ['2027-03-16','Champions · Octavos de final (vuelta, día 1)','Champions League','alta','También 17/03',false],
+  ['2027-03-17','Libertadores 2027 · Sorteo de la fase de grupos','Copa Libertadores','baja','',true],
+  ['2027-04-06','Champions · Cuartos de final (ida, día 1)','Champions League','alta','También 07/04',false],
+  ['2027-04-07','Libertadores 2027 · Comienza la fase de grupos','Copa Libertadores','alta','',true],
+  ['2027-04-13','Champions · Cuartos de final (vuelta, día 1)','Champions League','alta','También 14/04',false],
+  ['2027-04-27','Champions · Semifinales (ida, día 1)','Champions League','alta','También 28/04',true],
+  ['2027-05-04','Champions · Semifinales (vuelta, día 1)','Champions League','alta','También 05/05',true],
+  ['2027-06-05','Champions · FINAL (Madrid, Metropolitano)','Champions League','alta','',false],
+  ['2027-09-01','Inicio de las Eliminatorias al Mundial 2030 (aprox.)','Selección Bolivia','alta','Fecha aproximada: solo se sabe que empiezan en septiembre de 2027',true],
+];
+const IMPORTANCIAS = {alta:'🔴 Alta', media:'🟠 Media', baja:'⚪ Baja'};
+const DIAS_SEM = ['dom','lun','mar','mié','jue','vie','sáb'];
+function asegurarEventos(){
+  if(!Array.isArray(db.eventos)) db.eventos = [];
+  if(!db.settings.eventosCargados){
+    EVENTOS_INICIALES.forEach(([fecha,titulo,comp,imp,nota,verificar])=>db.eventos.push({id:uid(), fecha, hora:'', titulo, comp, imp, nota, verificar}));
+    db.settings.eventosCargados = true; guardar();
+  }
+}
+const diaSemana = iso => { const [y,m,d]=iso.split('-').map(Number); return DIAS_SEM[new Date(y,m-1,d).getDay()]; };
+const textoFaltan = d => d===0 ? '¡HOY!' : d===1 ? 'mañana' : d>1 ? `faltan ${d} días` : `hace ${-d} días`;
+let verPasados = false;
+function renderCalendario(){
+  asegurarEventos();
+  const t = document.getElementById('tabla'), h = hoy();
+  const q = document.getElementById('buscar').value.trim().toLowerCase();
+  let evs = db.eventos.map(e=>({...e, falta:-diasDesde(e.fecha)}))
+    .filter(e=> verPasados || e.fecha >= h)
+    .filter(e=> !q || [e.titulo,e.comp,e.nota].join(' ').toLowerCase().includes(q))
+    .sort((a,b)=> verPasados ? b.fecha.localeCompare(a.fecha) : (a.fecha.localeCompare(b.fecha) || (a.hora||'').localeCompare(b.hora||'')));
+  // Destacados: importancia alta en los próximos 14 días
+  const destacados = db.eventos.map(e=>({...e, falta:-diasDesde(e.fecha)})).filter(e=>e.imp==='alta' && e.falta>=0 && e.falta<=14).sort((a,b)=>a.falta-b.falta);
+  t.innerHTML = `
+    <div style="padding:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line)">
+      <span class="grow muted" style="font-size:14px">Próximos partidos y fechas que suelen traer más cargas. Las fechas cambian: editalas cuando se confirmen.</span>
+      <label style="display:flex;gap:6px;align-items:center;margin:0;font-size:14px;color:var(--text)"><input type="checkbox" style="width:auto" ${verPasados?'checked':''} onchange="verPasados=this.checked;render()"> Ver pasados</label>
+      <button class="primary small" onclick="abrirEvento()">+ Agregar fecha</button>
+    </div>
+    ${destacados.length && !verPasados ? `<div style="padding:12px 14px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--line)">${destacados.map(e=>`
+      <div class="alerta riesgo" style="margin:0;cursor:pointer" onclick="abrirEvento('${e.id}')">⚽ <span class="grow"><b>${e.falta===0?'¡HOY!':e.falta===1?'¡Mañana!':`Faltan ${e.falta} días`}</b> · ${esc(e.titulo)} <span style="opacity:.85">(${diaSemana(e.fecha)} ${fmtFecha(e.fecha).slice(0,5)}${e.hora?' '+esc(e.hora):''})</span></span></div>`).join('')}</div>` : ''}
+    ${evs.length ? `<table><tbody>${evs.map(e=>`<tr class="fila" onclick="abrirEvento('${e.id}')">
+      <td style="white-space:nowrap;width:1%"><b>${fmtFecha(e.fecha).slice(0,5)}</b><div class="muted" style="font-size:12px">${diaSemana(e.fecha)} ${fmtFecha(e.fecha).slice(6)}${e.hora?' · '+esc(e.hora):''}</div></td>
+      <td><b>${esc(e.titulo)}</b>${e.verificar?' <span class="chip-riesgo atendido" title="Fecha no confirmada oficialmente">⚠ verificar</span>':''}
+        <div class="muted" style="font-size:13px">${esc(e.comp||'')}${e.nota?' · '+esc(e.nota):''}</div></td>
+      <td style="white-space:nowrap;font-size:13px">${IMPORTANCIAS[e.imp]||''}</td>
+      <td style="white-space:nowrap;text-align:right" class="${e.falta>=0 && e.falta<=7 && e.imp!=='baja' ? 'vencido' : 'muted'}">${textoFaltan(e.falta)}</td>
+    </tr>`).join('')}</tbody></table>`
+    : `<div class="vacio">${verPasados?'No hay fechas cargadas.':'No hay próximas fechas cargadas.'}<br><br><button class="primary" onclick="abrirEvento()">+ Agregar fecha</button></div>`}`;
+}
+function abrirEvento(id){
+  asegurarEventos();
+  const e = id ? db.eventos.find(x=>x.id===id) : {fecha:hoy(), hora:'', titulo:'', comp:'', imp:'alta', nota:'', verificar:false};
+  const comps = [...new Set(['Liga boliviana','Clásico','Selección Bolivia','Copa Libertadores','Copa Sudamericana','Champions League','Mundial', ...db.eventos.map(x=>x.comp).filter(Boolean)])];
+  document.getElementById('mClienteBody').innerHTML = `
+    <h2>${id?'Editar fecha':'Nueva fecha'}</h2>
+    <div style="margin-bottom:10px"><label>Evento *</label><input id="eTitulo" value="${esc(e.titulo)}" placeholder="ej: Clásico paceño · Bolívar vs The Strongest"></div>
+    <div class="grid2">
+      <div><label>Fecha *</label><input id="eFecha" type="date" value="${e.fecha}"></div>
+      <div><label>Hora (opcional)</label><input id="eHora" type="time" value="${esc(e.hora||'')}"></div>
+      <div><label>Competición</label><input id="eComp" list="listaComps" value="${esc(e.comp||'')}"><datalist id="listaComps">${comps.map(c=>`<option value="${esc(c)}">`).join('')}</datalist></div>
+      <div><label>Importancia</label><select id="eImp">${Object.entries(IMPORTANCIAS).map(([k,v])=>`<option value="${k}" ${e.imp===k?'selected':''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div style="margin-top:10px"><label>Nota</label><input id="eNota" value="${esc(e.nota||'')}" placeholder="ej: se juega en La Paz, mucha expectativa"></div>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:10px;font-size:14px;color:var(--text)"><input type="checkbox" id="eVerif" style="width:auto" ${e.verificar?'checked':''}> Fecha sin confirmar (mostrar "⚠ verificar")</label>
+    <p class="muted" style="font-size:13px;margin:8px 0 0">Las de importancia <b>Alta</b> aparecen destacadas con "faltan X días" cuando quedan 14 días o menos.</p>
+    <div class="acciones">
+      ${id?`<button class="danger" onclick="borrarEvento('${id}')">Eliminar</button>`:'<span></span>'}
+      <div style="display:flex;gap:8px"><button onclick="cerrar('mCliente')">Cancelar</button><button class="primary" onclick="guardarEvento(${id?`'${id}'`:'null'})">Guardar</button></div>
+    </div>`;
+  document.getElementById('mCliente').classList.add('on');
+  if(!id) setTimeout(()=>document.getElementById('eTitulo').focus(), 30);
+}
+function guardarEvento(id){
+  const v = k => document.getElementById(k).value.trim();
+  if(!v('eTitulo') || !v('eFecha')){ alert('Completá al menos el evento y la fecha.'); return; }
+  let e = id ? db.eventos.find(x=>x.id===id) : null;
+  if(!e){ e = {id:uid()}; db.eventos.push(e); }
+  Object.assign(e, {titulo:v('eTitulo'), fecha:v('eFecha'), hora:v('eHora'), comp:v('eComp'), imp:v('eImp'), nota:v('eNota'), verificar:document.getElementById('eVerif').checked});
+  guardar(); cerrar('mCliente'); render();
+}
+function borrarEvento(id){
+  if(!confirm('¿Eliminar esta fecha del calendario?')) return;
+  db.eventos = db.eventos.filter(x=>x.id!==id);
+  guardar(); cerrar('mCliente'); render();
+}
+
 /* ---------- Inicio (dashboard) ---------- */
 // Los más urgentes: primero en riesgo sin contactar (los que más se alejaron de su ritmo), después los que más días llevan sin contacto.
 function urgentes(n){
@@ -789,7 +891,7 @@ function avisar(){
 
 document.getElementById('buscar').addEventListener('input', ()=>{ if(tab==='inicio') tab='todos'; render(); });
 // Abrir en una pestaña concreta (al tocar una notificación)
-{ const t = new URLSearchParams(location.search).get('tab'); if(['inicio','todos','riesgo','pend','ranking'].includes(t)) tab = t; }
+{ const t = new URLSearchParams(location.search).get('tab'); if(['inicio','todos','riesgo','pend','ranking','calendario'].includes(t)) tab = t; }
 if('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e=>{ if(e.data && e.data.tab){ setTab(e.data.tab); } });
 render();
 // Al abrir: mandar el resumen actualizado si cambió (las alertas también cambian con el paso de los días)
